@@ -54,3 +54,7 @@ export PYTHONPATH="$PWD/reference/python:$PWD/backend"
 # Run the test
 python3 -m reference.python.tests.smoke_endtoend
 ```
+
+### Important Android Build Note
+The massive OpenCV Android SDK (version 5.0.0+) is NOT tracked in Git to save space. 
+To build the Android app, you must download the official OpenCV Android SDK and extract the sdk folder directly into the ndroid/opencv/ directory.

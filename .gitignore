@@ -5,3 +5,11 @@ __pycache__/
 venv/
 out/*.db
 out/jscheck/
+android/.gradle/
+android/build/
+# Android Studio & SDK Exceptions
+.idea/
+*.iml
+local.properties
+android/opencv/
+android/.idea/
