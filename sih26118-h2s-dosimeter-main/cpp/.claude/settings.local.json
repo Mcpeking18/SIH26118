@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:styles.refero.design)",
+      "WebFetch(domain:superlative-buttercream-510705.netlify.app)"
+    ]
+  }
+}

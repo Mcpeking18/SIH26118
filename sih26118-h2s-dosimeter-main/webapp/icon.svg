@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Maskable icon: everything meaningful stays inside the central 80% safe zone. -->
+  <rect width="512" height="512" fill="#0b0e11"/>
+  <circle cx="256" cy="256" r="150" fill="#151c24" stroke="#2a333d" stroke-width="10"/>
+  <!-- The badge itself: four corner markers and a darkening reagent well. -->
+  <g fill="#38bdf8">
+    <rect x="146" y="146" width="34" height="34" rx="3"/>
+    <rect x="332" y="146" width="34" height="34" rx="3"/>
+    <rect x="332" y="332" width="34" height="34" rx="3"/>
+    <rect x="146" y="332" width="34" height="34" rx="3"/>
+  </g>
+  <circle cx="256" cy="256" r="76" fill="#6b5238"/>
+  <circle cx="256" cy="256" r="76" fill="none" stroke="#0b0e11" stroke-width="8"/>
+  <text x="256" y="272" font-family="system-ui, sans-serif" font-size="54" font-weight="700"
+        text-anchor="middle" fill="#f4e6d4">H₂S</text>
+</svg>

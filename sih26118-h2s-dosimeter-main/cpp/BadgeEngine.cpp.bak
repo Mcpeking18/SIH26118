@@ -1,0 +1,812 @@
+#include "BadgeEngine.hpp"
+#include <iostream>
+#include <fstream>
+#include <stdexcept>
+#include <algorithm>
+#include <numeric>
+#include <cmath>
+#include <limits>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/core.hpp>
+
+namespace dosimeter {
+
+BadgeEngine::BadgeEngine(const ScanConfig& config) : config_(config) {}
+
+ScanResult BadgeEngine::processImage(const cv::Mat& bgr_frame) {
+    ScanResult result;
+
+    try {
+        // Step 1: Geometric rectification
+        DetectionResult detection = detectAndRectify(bgr_frame);
+        result.warped_image = detection.warped;
+        result.reproj_rmse_mm = detection.reproj_rmse_mm;
+
+        if (!detection.ok) {
+            result.ok = false;
+            result.reason = detection.reason;
+            result.verdict = Verdict::INVALID;
+            result.stage_failed = StageFailed::NONE; // Geometry failure
+            return result;
+        }
+
+        // Step 2: Photometric ROI sampling
+        BadgeSamples samples = sampleRegions(detection.warped);
+
+        // Step 3: Color normalization and illumination invariance
+        NormalizationResult norm_result = normalizeAndComputeObservables(samples);
+        if (!norm_result.ok) {
+            result.ok = false;
+            result.reason = norm_result.reason;
+            result.verdict = Verdict::INVALID;
+
+            // Determine which stage failed based on reason
+            if (norm_result.reason.find("geometry") != std::string::npos ||
+                norm_result.reason.find("marker") != std::string::npos) {
+                result.stage_failed = StageFailed::NONE;
+            } else if (norm_result.reason.find("illumination") != std::string::npos ||
+                      norm_result.reason.find("gradient") != std::string::npos) {
+                result.stage_failed = StageFailed::SPATIAL_NON_UNIFORMITY;
+            } else if (norm_result.reason.find("neutral") != std::string::npos ||
+                      norm_result.reason.find("monotonic") != std::string::npos) {
+                result.stage_failed = StageFailed::NEUTRAL_MONOTONICITY;
+            } else {
+                result.stage_failed = StageFailed::NONE;
+            }
+            return result;
+        }
+
+        // Copy over normalization results
+        result.pad_lab = norm_result.pad_lab;
+        result.baseline_lab = norm_result.baseline_lab;
+        result.delta_L_star = norm_result.delta_l_star;
+        result.locus_projection = norm_result.locus_projection;
+        result.chroma_residual = norm_result.chroma_residual;
+        result.delta_e00 = norm_result.delta_e00;
+        result.condition_number = norm_result.condition_number;
+
+        // Step 4: Kinetic dosimetry and regulatory engine
+        DoseAssessment dose_result = computeDoseAndVerdict(norm_result);
+
+        // Populate final result
+        result.ok = true;
+        result.reason = "ok";
+        result.verdict = dose_result.verdict;
+        result.raw_dose_ppm_hr = dose_result.dose_ppm_hr;
+        result.final_dose_ppm_hr = dose_result.dose_ppm_hr; // Already includes env compensation in assessment
+        result.twa_ppm = dose_result.twa_ppm;
+        result.channel_balance = norm_result.channel_balance;
+        result.light_quality = norm_result.light_quality;
+        result.loo_residual_mean = norm_result.loo_residual_mean;
+        result.loo_residual_max = norm_result.loo_residual_max;
+        result.locus_residual = norm_result.locus_residual;
+        result.locus_l_bias = norm_result.locus_l_bias;
+        result.gradient_percent = norm_result.gradient_percent;
+
+        // Copy sample data for debugging
+        result.pad_clip_fraction = samples.pad.clip_fraction;
+        result.pad_black_fraction = samples.pad.black_fraction;
+        result.pad_cv_percent = samples.pad.cv_percent;
+        result.patches = samples.patches;
+        result.white_field = samples.white_field;
+
+    } catch (const std::exception& e) {
+        result.ok = false;
+        result.reason = std::string("Processing error: ") + e.what();
+        result.verdict = Verdict::INVALID;
+        result.stage_failed = StageFailed::NONE;
+    }
+
+    return result;
+}
+
+ScanResult BadgeEngine::processImageFile(const std::string& filepath) {
+    cv::Mat image = cv::imread(filepath, cv::IMREAD_COLOR);
+    if (image.empty()) {
+        ScanResult result;
+        result.ok = false;
+        result.reason = "Failed to load image file: " + filepath;
+        result.verdict = Verdict::INVALID;
+        return result;
+    }
+    return processImage(image);
+}
+
+DetectionResult BadgeEngine::detectAndRectify(const cv::Mat& bgr_frame) {
+    return rectifier_.rectify(bgr_frame);
+}
+
+BadgeSamples BadgeEngine::sampleRegions(const cv::Mat& warped_bgr) {
+    BadgeSamples samples;
+
+    if (warped_bgr.empty()) {
+        return samples;
+    }
+
+    // Convert to linear RGB for processing
+    cv::Mat warped_linear_rgb(warped_bgr.size(), CV_32FC3);
+    for (int y = 0; y < warped_bgr.rows; y++) {
+        for (int x = 0; x < warped_bgr.cols; x++) {
+            cv::Vec3b bgr = warped_bgr.at<cv::Vec3b>(y, x);
+            cv::Vec3f rgb_linear;
+            rgb_linear[0] = color::srgb_to_linear(bgr[2]); // R
+            rgb_linear[1] = color::srgb_to_linear(bgr[1]); // G
+            rgb_linear[2] = color::srgb_to_linear(bgr[0]); // B
+            warped_linear_rgb.at<cv::Vec3f>(y, x) = rgb_linear;
+        }
+    }
+
+    // Sample pad region (central well)
+    samples.pad = samplePadRegion(warped_linear_rgb);
+
+    // Sample reference patches
+    samples.patches = sampleReferencePatches(warped_linear_rgb);
+
+    // Sample white-field probes
+    samples.white_field = sampleWhiteFieldProbes(warped_linear_rgb);
+
+    return samples;
+}
+
+PatchMetrics BadgeEngine::samplePadRegion(const cv::Mat& linear_rgb_image) {
+    PatchMetrics metrics;
+    metrics.name = "PAD";
+
+    if (linear_rgb_image.empty()) {
+        return metrics;
+    }
+
+    // Pad parameters from spec
+    const float pad_radius_mm = 5.0f; // 10mm diameter / 2
+    const float sample_fraction = config_.pad_sample_fraction;
+    const float sample_radius_mm = pad_radius_mm * sample_fraction;
+    const float px_per_mm = 20.0f; // From spec: 20 px/mm
+    const int sample_radius_px = static_cast<int>(std::round(sample_radius_mm * px_per_mm));
+
+    // Center of the pad in canonical image (15mm, 15mm) -> (300px, 300px)
+    const int center_x = 300;
+    const int center_y = 300;
+
+    // Collect pixels within the sample radius
+    std::vector<cv::Vec3f> pixels;
+    std::vector<float> luminances;
+
+    for (int y = std::max(0, center_y - sample_radius_px);
+         y <= std::min(linear_rgb_image.rows - 1, center_y + sample_radius_px);
+         y++) {
+        for (int x = std::max(0, center_x - sample_radius_px);
+             x <= std::min(linear_rgb_image.cols - 1, center_x + sample_radius_px);
+             x++) {
+            // Check if pixel is within the circular region
+            float dx = x - center_x;
+            float dy = y - center_y;
+            float dist_px = std::sqrt(dx*dx + dy*dy);
+
+            if (dist_px <= sample_radius_px) {
+                cv::Vec3f pixel = linear_rgb_image.at<cv::Vec3f>(y, x);
+                pixels.push_back(pixel);
+
+                // Calculate Rec.709 luminance
+                float Y = 0.2126f * pixel[0] + 0.7152f * pixel[1] + 0.0722f * pixel[2];
+                luminances.push_back(Y);
+            }
+        }
+    }
+
+    if (pixels.empty()) {
+        return metrics;
+    }
+
+    // Calculate basic statistics
+    metrics.n_pixels = static_cast<int>(pixels.size());
+    metrics.n_total = metrics.n_pixels; // For pad, all sampled pixels are valid
+
+    // Calculate mean
+    cv::Vec3f mean(0, 0, 0);
+    for (const auto& p : pixels) {
+        mean[0] += p[0];
+        mean[1] += p[1];
+        mean[2] += p[2];
+    }
+    mean[0] /= metrics.n_pixels;
+    mean[1] /= metrics.n_pixels;
+    mean[2] /= metrics.n_pixels;
+    metrics.mean_linear = mean;
+
+    // Calculate median (for robustness)
+    std::vector<float> r_vals, g_vals, b_vals;
+    for (const auto& p : pixels) {
+        r_vals.push_back(p[0]);
+        g_vals.push_back(p[1]);
+        b_vals.push_back(p[2]);
+    }
+    std::sort(r_vals.begin(), r_vals.end());
+    std::sort(g_vals.begin(), g_vals.end());
+    std::sort(b_vals.begin(), b_vals.end());
+
+    metrics.median_linear[0] = r_vals[r_vals.size()/2];
+    metrics.median_linear[1] = g_vals[g_vals.size()/2];
+    metrics.median_linear[2] = b_vals[b_vals.size()/2];
+
+    // Calculate standard deviation
+    cv::Vec3f variance(0, 0, 0);
+    for (const auto& p : pixels) {
+        variance[0] += (p[0] - mean[0]) * (p[0] - mean[0]);
+        variance[1] += (p[1] - mean[1]) * (p[1] - mean[1]);
+        variance[2] += (p[2] - mean[2]) * (p[2] - mean[2]);
+    }
+    variance[0] /= metrics.n_pixels;
+    variance[1] /= metrics.n_pixels;
+    variance[2] /= metrics.n_pixels;
+    metrics.std_linear[0] = std::sqrt(variance[0]);
+    metrics.std_linear[1] = std::sqrt(variance[1]);
+    metrics.std_linear[2] = std::sqrt(variance[2]);
+
+    // Calculate luminance statistics
+    float luminance_sum = std::accumulate(luminances.begin(), luminances.end(), 0.0f);
+    metrics.luminance = luminance_sum / luminances.size();
+
+    float luminance_variance = 0.0f;
+    for (float lum : luminances) {
+        luminance_variance += (lum - metrics.luminance) * (lum - metrics.luminance);
+    }
+    luminance_variance /= luminances.size();
+    float luminance_std = std::sqrt(luminance_variance);
+    metrics.cv_percent = (metrics.luminance > 0) ? (luminance_std / metrics.luminance) * 100.0f : 0.0f;
+
+    // Calculate clip fraction (glare)
+    int clip_count = 0;
+    for (const auto& p : pixels) {
+        // Check if any channel is near 1.0 (255 in 8-bit)
+        if (p[0] > 0.996f || p[1] > 0.996f || p[2] > 0.996f) { // ~254/255
+            clip_count++;
+        }
+    }
+    metrics.clip_fraction = static_cast<float>(clip_count) / metrics.n_pixels;
+
+    // Calculate black fraction (shadow)
+    int black_count = 0;
+    for (const auto& p : pixels) {
+        // Check if any channel is near 0.0
+        if (p[0] < 0.008f || p[1] < 0.008f || p[2] < 0.008f) { // ~2/255
+            black_count++;
+        }
+    }
+    metrics.black_fraction = static_cast<float>(black_count) / metrics.n_pixels;
+
+    // Convert mean to Lab
+    metrics.lab = color::xyz_to_lab(color::linear_rgb_to_xyz(metrics.mean_linear));
+
+    return metrics;
+}
+
+std::vector<PatchMetrics> BadgeEngine::sampleReferencePatches(const cv::Mat& linear_rgb_image) {
+    std::vector<PatchMetrics> patches;
+    patches.reserve(12);
+
+    if (linear_rgb_image.empty()) {
+        return patches;
+    }
+
+    // Reference patch parameters from spec
+    const float ring_radius_mm = 8.6f;
+    const float patch_size_mm = 2.2f; // Approximate diameter
+    const float sample_fraction = config_.patch_sample_fraction;
+    const float sample_size_mm = patch_size_mm * sample_fraction;
+    const float px_per_mm = 20.0f;
+    const int sample_size_px = static_cast<int>(std::round(sample_size_mm * px_per_mm));
+    const int half_sample_size = sample_size_px / 2;
+
+    // Center of the ring in canonical image (15mm, 15mm) -> (300px, 300px)
+    const int center_x = 300;
+    const int center_y = 300;
+    const float ring_radius_px = ring_radius_mm * px_per_mm;
+
+    // Patch names and angles (in degrees) from spec
+    // Index P0: WHITE (0 deg, top)
+    // Index P1: CYAN (+30 deg)
+    // Index P2: SUBSTRATE_A (+60 deg) [Pristine baseline A]
+    // Index P3: MAGENTA (+90 deg)
+    // Index P4: GREY_50 (+120 deg)
+    // Index P5: YELLOW (+150 deg)
+    // Index P6: BLACK (+180 deg)
+    // Index P7: RED (+210 deg)
+    // Index P8: SUBSTRATE_B (+240 deg) [Pristine baseline B - Diametrically 180 deg from P2]
+    // Index P9: GREEN (+270 deg)
+    // Index P10: GREY_20 (+300 deg)
+    // Index P11: BLUE (+330 deg)
+
+    struct PatchDef {
+        std::string name;
+        float angle_deg; // degrees from top (0 deg)
+    };
+
+    std::vector<PatchDef> patch_defs = {
+        {"P0_WHITE", 0.0f},
+        {"P1_CYAN", 30.0f},
+        {"P2_SUBSTRATE_A", 60.0f},
+        {"P3_MAGENTA", 90.0f},
+        {"P4_GREY_50", 120.0f},
+        {"P5_YELLOW", 150.0f},
+        {"P6_BLACK", 180.0f},
+        {"P7_RED", 210.0f},
+        {"P8_SUBSTRATE_B", 240.0f},
+        {"P9_GREEN", 270.0f},
+        {"P10_GREY_20", 300.0f},
+        {"P11_BLUE", 330.0f}
+    };
+
+    for (const auto& def : patch_defs) {
+        PatchMetrics metrics;
+        metrics.name = def.name;
+
+        // Calculate center position of this patch
+        float angle_rad = (def.angle_deg - 90.0f) * static_cast<float>(M_PI) / 180.0f; // Adjust for image coordinates (0 deg at top)
+        int patch_center_x = static_cast<int>(std::round(center_x + ring_radius_px * std::cos(angle_rad)));
+        int patch_center_y = static_cast<int>(std::round(center_y + ring_radius_px * std::sin(angle_rad)));
+
+        // Collect pixels within the sample region
+        std::vector<cv::Vec3f> pixels;
+        std::vector<float> luminances;
+
+        for (int y = std::max(0, patch_center_y - half_sample_size);
+             y <= std::min(linear_rgb_image.rows - 1, patch_center_y + half_sample_size);
+             y++) {
+            for (int x = std::max(0, patch_center_x - half_sample_size);
+                 x <= std::min(linear_rgb_image.cols - 1, patch_center_x + half_sample_size);
+                 x++) {
+                cv::Vec3f pixel = linear_rgb_image.at<cv::Vec3f>(y, x);
+                pixels.push_back(pixel);
+
+                // Calculate Rec.709 luminance
+                float Y = 0.2126f * pixel[0] + 0.7152f * pixel[1] + 0.0722f * pixel[2];
+                luminances.push_back(Y);
+            }
+        }
+
+        if (pixels.empty()) {
+            patches.push_back(metrics);
+            continue;
+        }
+
+        // Calculate basic statistics
+        metrics.n_pixels = static_cast<int>(pixels.size());
+        metrics.n_total = metrics.n_pixels;
+
+        // Calculate mean
+        cv::Vec3f mean(0, 0, 0);
+        for (const auto& p : pixels) {
+            mean[0] += p[0];
+            mean[1] += p[1];
+            mean[2] += p[2];
+        }
+        mean[0] /= metrics.n_pixels;
+        mean[1] /= metrics.n_pixels;
+        mean[2] /= metrics.n_pixels;
+        metrics.mean_linear = mean;
+
+        // Calculate median
+        std::vector<float> r_vals, g_vals, b_vals;
+        for (const auto& p : pixels) {
+            r_vals.push_back(p[0]);
+            g_vals.push_back(p[1]);
+            b_vals.push_back(p[2]);
+        }
+        std::sort(r_vals.begin(), r_vals.end());
+        std::sort(g_vals.begin(), g_vals.end());
+        std::sort(b_vals.begin(), b_vals.end());
+
+        metrics.median_linear[0] = r_vals[r_vals.size()/2];
+        metrics.median_linear[1] = g_vals[g_vals.size()/2];
+        metrics.median_linear[2] = b_vals[b_vals.size()/2];
+
+        // Calculate standard deviation
+        cv::Vec3f variance(0, 0, 0);
+        for (const auto& p : pixels) {
+            variance[0] += (p[0] - mean[0]) * (p[0] - mean[0]);
+            variance[1] += (p[1] - mean[1]) * (p[1] - mean[1]);
+            variance[2] += (p[2] - mean[2]) * (p[2] - mean[2]);
+        }
+        variance[0] /= metrics.n_pixels;
+        variance[1] /= metrics.n_pixels;
+        variance[2] /= metrics.n_pixels;
+        metrics.std_linear[0] = std::sqrt(variance[0]);
+        metrics.std_linear[1] = std::sqrt(variance[1]);
+        metrics.std_linear[2] = std::sqrt(variance[2]);
+
+        // Calculate luminance statistics
+        float luminance_sum = std::accumulate(luminances.begin(), luminances.end(), 0.0f);
+        metrics.luminance = luminance_sum / luminances.size();
+
+        float luminance_variance = 0.0f;
+        for (float lum : luminances) {
+            luminance_variance += (lum - metrics.luminance) * (lum - metrics.luminance);
+        }
+        luminance_variance /= luminances.size();
+        float luminance_std = std::sqrt(luminance_variance);
+        metrics.cv_percent = (metrics.luminance > 0) ? (luminance_std / metrics.luminance) * 100.0f : 0.0f;
+
+        // Calculate clip fraction (glare)
+        int clip_count = 0;
+        for (const auto& p : pixels) {
+            if (p[0] > 0.996f || p[1] > 0.996f || p[2] > 0.996f) {
+                clip_count++;
+            }
+        }
+        metrics.clip_fraction = static_cast<float>(clip_count) / metrics.n_pixels;
+
+        // Calculate black fraction (shadow)
+        int black_count = 0;
+        for (const auto& p : pixels) {
+            if (p[0] < 0.008f || p[1] < 0.008f || p[2] < 0.008f) {
+                black_count++;
+            }
+        }
+        metrics.black_fraction = static_cast<float>(black_count) / metrics.n_pixels;
+
+        // Convert mean to Lab
+        metrics.lab = color::xyz_to_lab(color::linear_rgb_to_xyz(metrics.mean_linear));
+
+        patches.push_back(metrics);
+    }
+
+    return patches;
+}
+
+std::vector<PatchMetrics> BadgeEngine::sampleWhiteFieldProbes(const cv::Mat& linear_rgb_image) {
+    std::vector<PatchMetrics> white_field;
+
+    if (linear_rgb_image.empty()) {
+        return white_field;
+    }
+
+    // White-field probe parameters from spec
+    const float r_in_mm = 5.2f;
+    const float r_out_mm = 13.2f;
+    const float px_per_mm = 20.0f;
+    const int r_in_px = static_cast<int>(std::round(r_in_mm * px_per_mm));
+    const int r_out_px = static_cast<int>(std::round(r_out_mm * px_per_mm));
+
+    // Center of the probes in canonical image (15mm, 15mm) -> (300px, 300px)
+    const int center_x = 300;
+    const int center_y = 300;
+
+    // Sample a few points along the rings for vignette modeling
+    // We'll sample 8 points on each ring (every 45 degrees)
+    const int num_samples_per_ring = 8;
+
+    for (int ring = 0; ring < 2; ring++) {
+        float radius_px = (ring == 0) ? r_in_px : r_out_px;
+        std::string ring_name = (ring == 0) ? "WHITE_FIELD_IN" : "WHITE_FIELD_OUT";
+
+        for (int i = 0; i < num_samples_per_ring; i++) {
+            float angle_deg = i * (360.0f / num_samples_per_ring);
+            float angle_rad = angle_deg * static_cast<float>(M_PI) / 180.0f;
+
+            int sample_x = static_cast<int>(std::round(center_x + radius_px * std::cos(angle_rad)));
+            int sample_y = static_cast<int>(std::round(center_y + radius_px * std::sin(angle_rad)));
+
+            // Check bounds
+            if (sample_x < 0 || sample_x >= linear_rgb_image.cols ||
+                sample_y < 0 || sample_y >= linear_rgb_image.rows) {
+                continue;
+            }
+
+            PatchMetrics metrics;
+            metrics.name = ring_name + "_PT" + std::to_string(i);
+
+            // Sample a small region around this point (3x3 pixels)
+            std::vector<cv::Vec3f> pixels;
+            std::vector<float> luminances;
+
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    int x = sample_x + dx;
+                    int y = sample_y + dy;
+
+                    if (x >= 0 && x < linear_rgb_image.cols && y >= 0 && y < linear_rgb_image.rows) {
+                        cv::Vec3f pixel = linear_rgb_image.at<cv::Vec3f>(y, x);
+                        pixels.push_back(pixel);
+
+                        // Calculate Rec.709 luminance
+                        float Y = 0.2126f * pixel[0] + 0.7152f * pixel[1] + 0.0722f * pixel[2];
+                        luminances.push_back(Y);
+                    }
+                }
+            }
+
+            if (pixels.empty()) {
+                white_field.push_back(metrics);
+                continue;
+            }
+
+            // Calculate basic statistics
+            metrics.n_pixels = static_cast<int>(pixels.size());
+            metrics.n_total = metrics.n_pixels;
+
+            // Calculate mean
+            cv::Vec3f mean(0, 0, 0);
+            for (const auto& p : pixels) {
+                mean[0] += p[0];
+                mean[1] += p[1];
+                mean[2] += p[2];
+            }
+            mean[0] /= metrics.n_pixels;
+            mean[1] /= metrics.n_pixels;
+            mean[2] /= metrics.n_pixels;
+            metrics.mean_linear = mean;
+
+            // Calculate median
+            std::vector<float> r_vals, g_vals, b_vals;
+            for (const auto& p : pixels) {
+                r_vals.push_back(p[0]);
+                g_vals.push_back(p[1]);
+                b_vals.push_back(p[2]);
+            }
+            std::sort(r_vals.begin(), r_vals.end());
+            std::sort(g_vals.begin(), g_vals.end());
+            std::sort(b_vals.begin(), b_vals.end());
+
+            metrics.median_linear[0] = r_vals[r_vals.size()/2];
+            metrics.median_linear[1] = g_vals[g_vals.size()/2];
+            metrics.median_linear[2] = b_vals[b_vals.size()/2];
+
+            // Calculate standard deviation
+            cv::Vec3f variance(0, 0, 0);
+            for (const auto& p : pixels) {
+                variance[0] += (p[0] - mean[0]) * (p[0] - mean[0]);
+                variance[1] += (p[1] - mean[1]) * (p[1] - mean[1]);
+                variance[2] += (p[2] - mean[2]) * (p[2] - mean[2]);
+            }
+            variance[0] /= metrics.n_pixels;
+            variance[1] /= metrics.n_pixels;
+            variance[2] /= metrics.n_pixels;
+            metrics.std_linear[0] = std::sqrt(variance[0]);
+            metrics.std_linear[1] = std::sqrt(variance[1]);
+            metrics.std_linear[2] = std::sqrt(variance[2]);
+
+            // Calculate luminance statistics
+            float luminance_sum = std::accumulate(luminances.begin(), luminances.end(), 0.0f);
+            metrics.luminance = luminance_sum / luminances.size();
+
+            float luminance_variance = 0.0f;
+            for (float lum : luminances) {
+                luminance_variance += (lum - metrics.luminance) * (lum - metrics.luminance);
+            }
+            luminance_variance /= luminances.size();
+            float luminance_std = std::sqrt(luminance_variance);
+            metrics.cv_percent = (metrics.luminance > 0) ? (luminance_std / metrics.luminance) * 100.0f : 0.0f;
+
+            // Calculate clip fraction (glare)
+            int clip_count = 0;
+            for (const auto& p : pixels) {
+                if (p[0] > 0.996f || p[1] > 0.996f || p[2] > 0.996f) {
+                    clip_count++;
+                }
+            }
+            metrics.clip_fraction = static_cast<float>(clip_count) / metrics.n_pixels;
+
+            // Calculate black fraction (shadow)
+            int black_count = 0;
+            for (const auto& p : pixels) {
+                if (p[0] < 0.008f || p[1] < 0.008f || p[2] < 0.008f) {
+                    black_count++;
+                }
+            }
+            metrics.black_fraction = static_cast<float>(black_count) / metrics.n_pixels;
+
+            // Convert mean to Lab
+            metrics.lab = color::xyz_to_lab(color::linear_rgb_to_xyz(metrics.mean_linear));
+
+            white_field.push_back(metrics);
+        }
+    }
+
+    return white_field;
+}
+
+NormalizationResult BadgeEngine::normalizeAndComputeObservables(const BadgeSamples& samples) {
+    NormalizationResult result;
+
+    // Check if we have enough data
+    if (samples.patches.size() < 12) {
+        result.ok = false;
+        result.reason = "Insufficient reference patches detected";
+        return result;
+    }
+
+    // Extract patch means in linear RGB
+    std::vector<cv::Vec3f> observed_patches;
+    observed_patches.reserve(12);
+
+    for (const auto& patch : samples.patches) {
+        observed_patches.push_back(patch.mean_linear);
+    }
+
+    // Check for narrowband light
+    auto [light_quality, channel_balance, message] = color::narrowband_check(
+        observed_patches,
+        config_.warn_channel_balance,
+        config_.reject_channel_balance
+    );
+
+    result.light_quality = light_quality;
+    result.channel_balance = channel_balance;
+
+    if (light_quality == "reject") {
+        result.ok = false;
+        result.reason = "Severe narrowband light detected - impossible to color correct";
+        return result;
+    }
+
+    // Define reference patch values in linear RGB (D65 illuminant)
+    // These are approximate values for the reference patches
+    // In a real implementation, these would come from calibration data
+    std::vector<cv::Vec3f> reference_patches = {
+        // P0_WHITE: approximately [0.9, 0.9, 0.9]
+        cv::Vec3f(0.9f, 0.9f, 0.9f),
+        // P1_CYAN: approximately [0.0, 0.6, 0.6]
+        cv::Vec3f(0.0f, 0.6f, 0.6f),
+        // P2_SUBSTRATE_A: approximately [0.4, 0.4, 0.4] (pristine baseline A)
+        cv::Vec3f(0.4f, 0.4f, 0.4f),
+        // P3_MAGENTA: approximately [0.6, 0.0, 0.6]
+        cv::Vec3f(0.6f, 0.0f, 0.6f),
+        // P4_GREY_50: approximately [0.5, 0.5, 0.5]
+        cv::Vec3f(0.5f, 0.5f, 0.5f),
+        // P5_YELLOW: approximately [0.6, 0.6, 0.0]
+        cv::Vec3f(0.6f, 0.6f, 0.0f),
+        // P6_BLACK: approximately [0.0, 0.0, 0.0]
+        cv::Vec3f(0.0f, 0.0f, 0.0f),
+        // P7_RED: approximately [0.6, 0.0, 0.0]
+        cv::Vec3f(0.6f, 0.0f, 0.0f),
+        // P8_SUBSTRATE_B: approximately [0.4, 0.4, 0.4] (pristine baseline B)
+        cv::Vec3f(0.4f, 0.4f, 0.4f),
+        // P9_GREEN: approximately [0.0, 0.6, 0.0]
+        cv::Vec3f(0.0f, 0.6f, 0.0f),
+        // P10_GREY_20: approximately [0.8, 0.8, 0.8]
+        cv::Vec3f(0.8f, 0.8f, 0.8f),
+        // P11_BLUE: approximately [0.0, 0.0, 0.6]
+        cv::Vec3f(0.0f, 0.0f, 0.6f)
+    };
+
+    // Solve for color correction matrix using Finlayson root-6 expansion
+    Eigen::Matrix<float, 3, Eigen::Dynamic> ccm = color::solve_ccm(
+        observed_patches, reference_patches, 6, 1e-4f
+    );
+
+    // Calculate condition number of the design matrix
+    // Build design matrix F for condition number calculation
+    int n_samples = observed_patches.size();
+    Eigen::MatrixXf F(n_samples, 6);
+    for (int i = 0; i < n_samples; ++i) {
+        const cv::Vec3f& rgb = observed_patches[i];
+        F(i, 0) = rgb[0]; // R
+        F(i, 1) = rgb[1]; // G
+        F(i, 2) = rgb[2]; // B
+        F(i, 3) = std::sqrt(rgb[0] * rgb[1]); // sqrt(R*G)
+        F(i, 4) = std::sqrt(rgb[1] * rgb[2]); // sqrt(G*B)
+        F(i, 5) = std::sqrt(rgb[0] * rgb[2]); // sqrt(R*B)
+    }
+
+    // Calculate condition number
+    Eigen::JacobiSVD<Eigen::MatrixXf> svd(F, Eigen::ComputeThinU | Eigen::ComputeThinV);
+    float singular_values_max = svd.singularValues()(0);
+    float singular_values_min = svd.singularValues()(svd.singularValues().size() - 1);
+    result.condition_number = (singular_values_min > 0) ?
+        singular_values_max / singular_values_min :
+        std::numeric_limits<float>::infinity();
+
+    // Apply CCM to pad and patches
+    cv::Vec3f pad_linear_corrected = color::apply_ccm(ccm, samples.pad.mean_linear, 6);
+    cv::Vec3f baseline_A_linear = observed_patches[2]; // P2_SUBSTRATE_A
+    cv::Vec3f baseline_B_linear = observed_patches[8]; // P8_SUBSTRATE_B
+    cv::Vec3f baseline_linear = (baseline_A_linear + baseline_B_linear) * 0.5f;
+    cv::Vec3f baseline_linear_corrected = color::apply_ccm(ccm, baseline_linear, 6);
+
+    // Convert to XYZ then to Lab
+    result.pad_lab = color::xyz_to_lab(color::linear_rgb_to_xyz(pad_linear_corrected));
+    result.baseline_lab = color::xyz_to_lab(color::linear_rgb_to_xyz(baseline_linear_corrected));
+
+    // Calculate observables
+    result.delta_l_star = result.baseline_lab.L - result.pad_lab.L; // baseline_L - pad_L
+    result.delta_L_star = result.delta_l_star; // For backwards compatibility
+
+    // Calculate delta E CIE 2000 between pad and baseline
+    result.delta_e00 = color::delta_e_ciede2000(
+        cv::Vec3f(result.pad_lab.L, result.pad_lab.a, result.pad_lab.b),
+        cv::Vec3f(result.baseline_lab.L, result.baseline_lab.a, result.baseline_lab.b)
+    );
+
+    // TODO: Implement locus projection, chroma residual, leave-one-out residuals
+    // These would require more complex calculations based on the expected trajectory
+    // For now, we'll set them to zero as placeholders
+    result.locus_projection = 0.0f;
+    result.chroma_residual = 0.0f;
+    result.loo_residual_mean = 0.0f;
+    result.loo_residual_max = 0.0f;
+    result.locus_residual = 0.0f;
+    result.locus_l_bias = 0.0f;
+    result.gradient_percent = 0.0f;
+
+    result.ok = true;
+    result.reason = "ok";
+
+    return result;
+}
+
+DoseAssessment BadgeEngine::computeDoseAndVerdict(const NormalizationResult& norm_result) {
+    DoseAssessment result;
+
+    // If normalization failed, return invalid verdict
+    if (!norm_result.ok) {
+        result.verdict = Verdict::INVALID;
+        return result;
+    }
+
+    // Calculate environmental compensation factor
+    float f_env = (1.0f + 0.0035f * (config_.temp_c - 25.0f)) *
+                  (1.0f + 0.12f * (config_.rh_fraction - 0.50f));
+
+    // Observable: delta_L_star (net lightness loss)
+    float delta_L_star = norm_result.delta_L_star;
+
+    // Check for no detectable exposure
+    if (delta_L_star < 1.0f) {
+        result.verdict = Verdict::SAFE;
+        result.dose_ppm_hr = 0.0f;
+        result.twa_ppm = 0.0f;
+        return result;
+    }
+
+    // Inverse kinetic dose calculation
+    // Polynomial coefficients from calibration (these would come from training data)
+    // For demonstration, we'll use a simple linear approximation
+    // In a real implementation, these would be the calibrated polynomial coefficients
+    std::vector<float> poly_coeffs = {0.0f, 0.05f, 0.001f, 0.00001f}; // Example: c0 + c1*x + c2*x^2 + c3*x^3
+
+    // Evaluate polynomial: raw_dose = c0 + c1*x + c2*x^2 + c3*x^3
+    float raw_dose = 0.0f;
+    float x_pow = 1.0f;
+    for (float coeff : poly_coeffs) {
+        raw_dose += coeff * x_pow;
+        x_pow *= delta_L_star;
+    }
+
+    // Apply environmental compensation
+    float final_dose = raw_dose / f_env;
+
+    // Calculate TWA (time-weighted average)
+    float twa_ppm = final_dose / config_.shift_hours;
+
+    // Determine verdict based on regulatory thresholds
+    if (delta_L_star >= 78.2f) {
+        result.verdict = Verdict::SATURATED;
+        // For saturated badges, we report the dose as a lower bound
+        result.dose_ppm_hr = final_dose;
+        result.twa_ppm = twa_ppm;
+    } else if (twa_ppm > 5.0f || final_dose >= 20.0f) {
+        result.verdict = Verdict::CRITICAL;
+        result.dose_ppm_hr = final_dose;
+        result.twa_ppm = twa_ppm;
+    } else if (twa_ppm > 1.0f) {
+        result.verdict = Verdict::WARNING;
+        result.dose_ppm_hr = final_dose;
+        result.twa_ppm = twa_ppm;
+    } else {
+        result.verdict = Verdict::SAFE;
+        result.dose_ppm_hr = final_dose;
+        result.twa_ppm = twa_ppm;
+    }
+
+    // TODO: Implement multi-species CuS locus integrity gate
+    // This would involve checking if the measured Lab values follow the expected trajectory
+    // in CIELAB space through the khaki/bronze arc
+    // For now, we'll skip this check
+
+    // TODO: Implement STEL bounding
+    // This would require maintaining a history of scans
+
+    return result;
+}
+
+} // namespace dosimeter

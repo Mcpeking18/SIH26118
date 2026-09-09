@@ -1,0 +1,19 @@
+{
+  "name": "H2S Badge Exposure Scanner - MRPL",
+  "short_name": "H2S Scanner",
+  "description": "Reads a passive colorimetric H2S dosimeter badge with the phone camera and returns the wearer's cumulative exposure.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0e11",
+  "theme_color": "#0b0e11",
+  "icons": [
+    {
+      "src": "/webapp/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

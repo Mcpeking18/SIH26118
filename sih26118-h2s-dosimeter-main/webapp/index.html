@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0e11">
+<title>H2S Badge Scanner - MRPL</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<!--
+  SIH26118 - passive colorimetric H2S dosimeter, worker-facing scanner.
+
+  Design notes, since they are all consequences of where this gets used rather than taste:
+
+  * Near-black background. This is opened outdoors on a refinery at night as often as in
+    daylight; a white page destroys the operator's dark adaptation and makes the badge harder
+    to see, and it reflects off the phone in direct sun.
+  * One primary action, 76 px tall. The user is wearing gloves.
+  * The verdict is a full-width colour block with the word spelled out and a distinct glyph.
+    Colour alone is not a safety signal - roughly 1 in 12 men has a red/green deficiency, and
+    this reading is the difference between going home and going to a medical assessment.
+  * Numbers are tabular-lined so a column of readings can be compared at a glance.
+  * The torch is turned on automatically and its state is shown. Under a sodium lamp the
+    engine measures a channel balance around 0.005-0.2 and the reading becomes unreliable;
+    with the torch on the same lamps give 0.53-0.72. The page therefore treats the torch as
+    part of the instrument, not a convenience, and says so when it cannot get it.
+  * Scans queue offline and flush later. A phone on a plant at shift change frequently has no
+    usable signal, and losing an exposure record because of that is not acceptable.
+
+  No build step, no framework, no CDN - one file that works from a cached service worker.
+-->
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#0b0e11; --panel:#151a20; --panel-2:#1c232b; --line:#2a333d;
+    --ink:#eef2f6; --ink-dim:#9aa7b4; --ink-faint:#6b7885;
+    --safe:#2e7d32; --safe-ink:#7ee08a;
+    --elevated:#f9a825; --warning:#ef6c00; --critical:#c62828;
+    --accent:#38bdf8;
+    --radius:14px;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0; padding:0; background:var(--bg); color:var(--ink); font-family:var(--sans)}
+  body{
+    min-height:100dvh; display:flex; flex-direction:column;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{width:100%; max-width:560px; margin:0 auto; padding:12px 14px 28px; flex:1}
+
+  header{display:flex; align-items:center; gap:10px; padding:6px 0 12px}
+  .mark{width:34px;height:34px;border-radius:9px;background:linear-gradient(160deg,#2b3a48,#131a21);
+        border:1px solid var(--line); display:grid; place-items:center; flex:0 0 auto}
+  .mark b{font:700 15px/1 var(--sans); letter-spacing:-.5px; color:var(--accent)}
+  header h1{margin:0; font-size:15px; font-weight:650; letter-spacing:.2px}
+  header p{margin:2px 0 0; font-size:11.5px; color:var(--ink-faint); letter-spacing:.3px;
+           text-transform:uppercase}
+  .net{margin-left:auto; font-size:11px; color:var(--ink-dim); display:flex; align-items:center;
+       gap:6px; white-space:nowrap}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--safe-ink)}
+  .dot.off{background:var(--warning)}
+
+  /* ---- camera ---- */
+  .stage{position:relative; border-radius:var(--radius); overflow:hidden; background:#05070a;
+         border:1px solid var(--line); aspect-ratio:3/4}
+  video{width:100%; height:100%; object-fit:cover; display:block; background:#05070a}
+  .overlay{position:absolute; inset:0; pointer-events:none}
+  .stage.idle .overlay{opacity:.45}
+  .camnote{position:absolute; inset:0; display:grid; place-items:center; text-align:center;
+           padding:26px; font-size:13.5px; color:var(--ink-dim); line-height:1.5}
+  .camnote strong{display:block; color:var(--ink); font-size:15px; margin-bottom:7px}
+  .badgeframe{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+              width:72%; aspect-ratio:1/1}
+  .hint{position:absolute; left:0; right:0; bottom:0; padding:10px 12px 12px;
+        background:linear-gradient(transparent,rgba(5,7,10,.92)); font-size:12.5px;
+        color:#cfe0ee; text-align:center; line-height:1.45}
+  .flash{position:absolute; inset:0; background:#fff; opacity:0; transition:opacity .18s}
+  .flash.on{opacity:.75; transition:none}
+  .busy{position:absolute; inset:0; background:rgba(5,7,10,.78); display:none;
+        place-items:center; text-align:center}
+  .busy.on{display:grid}
+  .spin{width:34px;height:34px;border-radius:50%;border:3px solid #2a3a48;
+        border-top-color:var(--accent); animation:sp .8s linear infinite; margin:0 auto 12px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* ---- controls ---- */
+  .row{display:flex; gap:9px; margin-top:11px}
+  button{font-family:var(--sans); font-size:15px; font-weight:600; color:var(--ink);
+         background:var(--panel-2); border:1px solid var(--line); border-radius:12px;
+         padding:13px 14px; cursor:pointer; transition:transform .06s, background .15s}
+  button:active{transform:scale(.985)}
+  button:disabled{opacity:.42; cursor:not-allowed}
+  .primary{flex:1; height:76px; font-size:18px; font-weight:700; letter-spacing:.2px;
+           background:linear-gradient(180deg,#1e78c8,#155a99); border-color:#2a86d8;
+           box-shadow:0 6px 18px -8px #1e78c8}
+  .primary:disabled{background:var(--panel-2); border-color:var(--line); box-shadow:none}
+  .icon{width:76px; height:76px; flex:0 0 auto; display:grid; place-items:center; font-size:11px;
+        line-height:1.25; gap:2px; padding:6px}
+  .icon svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7}
+  .icon.on{border-color:#e0a83a; color:#ffd479; background:#2a2110}
+
+  /* ---- fields ---- */
+  .fields{display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-top:11px}
+  label{display:block; font-size:11px; text-transform:uppercase; letter-spacing:.6px;
+        color:var(--ink-faint); margin-bottom:5px}
+  input,select{width:100%; font:600 15px/1 var(--mono); color:var(--ink); background:var(--panel);
+        border:1px solid var(--line); border-radius:10px; padding:12px 11px}
+  input:focus,select:focus{outline:2px solid var(--accent); outline-offset:-1px}
+
+  /* ---- result ---- */
+  .result{margin-top:14px; border-radius:var(--radius); overflow:hidden; border:1px solid var(--line);
+          display:none}
+  .result.show{display:block; animation:rise .22s ease-out}
+  @keyframes rise{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
+  .verdict{padding:18px 16px; display:flex; align-items:center; gap:14px}
+  .verdict .glyph{width:44px;height:44px;flex:0 0 auto;border-radius:11px;
+                  background:rgba(0,0,0,.24); display:grid; place-items:center}
+  .verdict .glyph svg{width:26px;height:26px;stroke:#fff;fill:none;stroke-width:2.1}
+  .verdict h2{margin:0; font-size:25px; font-weight:800; letter-spacing:-.4px; color:#fff}
+  .verdict span{display:block; font-size:12.5px; font-weight:600; color:rgba(255,255,255,.86);
+                margin-top:2px}
+  .metrics{display:grid; grid-template-columns:repeat(2,1fr); background:var(--panel)}
+  .metric{padding:13px 15px; border-top:1px solid var(--line)}
+  .metric:nth-child(odd){border-right:1px solid var(--line)}
+  .metric i{display:block; font-style:normal; font-size:10.5px; text-transform:uppercase;
+            letter-spacing:.7px; color:var(--ink-faint)}
+  .metric b{display:block; font:700 21px/1.25 var(--mono); font-variant-numeric:tabular-nums;
+            margin-top:4px}
+  .metric small{color:var(--ink-faint); font-size:11px; font-weight:500}
+  .advice{padding:13px 15px; background:var(--panel-2); border-top:1px solid var(--line);
+          font-size:13px; line-height:1.55; color:#dbe6ef}
+  .advice em{font-style:normal; color:var(--ink-faint)}
+  .flags{padding:0 15px 13px; background:var(--panel-2)}
+  .flag{font-size:11.5px; color:#f0cf8a; background:#2a2415; border:1px solid #4a3d1c;
+        border-radius:8px; padding:7px 9px; margin-top:7px; line-height:1.45}
+
+  /* ---- history / footer ---- */
+  details{margin-top:14px; background:var(--panel); border:1px solid var(--line);
+          border-radius:var(--radius)}
+  summary{padding:13px 15px; font-size:13px; font-weight:600; cursor:pointer; color:var(--ink-dim)}
+  summary::marker{color:var(--ink-faint)}
+  .hist{padding:0 15px 13px}
+  .hitem{display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--line);
+         font-size:12.5px}
+  .swatch{width:10px;height:26px;border-radius:3px;flex:0 0 auto}
+  .hitem .who{font-weight:600}
+  .hitem .when{color:var(--ink-faint); font-size:11px}
+  .hitem .val{margin-left:auto; font:700 14px var(--mono); font-variant-numeric:tabular-nums}
+  .hitem .q{font-size:10px; color:var(--warning); margin-left:6px}
+  footer{margin-top:16px; font-size:11px; line-height:1.6; color:var(--ink-faint)}
+  footer b{color:var(--ink-dim); font-weight:600}
+  .hidden{display:none !important}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="mark"><b>H₂S</b></div>
+    <div>
+      <h1>Badge Exposure Scanner</h1>
+      <p>MRPL &middot; SIH26118</p>
+    </div>
+    <div class="net"><span class="dot" id="netDot"></span><span id="netTxt">online</span></div>
+  </header>
+
+  <!-- ---------------- camera ---------------- -->
+  <div class="stage idle" id="stage">
+    <video id="video" playsinline autoplay muted></video>
+
+    <!-- Alignment reticle. Geometry is generated from the real badge spec at load, not
+         eyeballed: 30 mm head, 4.5 mm ArUco markers inset 3.5 mm from each corner, 12 mm
+         reagent well, 12 reference patches on an 8.6 mm ring. Matching the drawn guide to the
+         printed artwork is what makes "fill the box" a sufficient instruction. -->
+    <svg class="overlay" id="overlay" viewBox="0 0 300 400" aria-hidden="true"></svg>
+
+    <div class="camnote" id="camnote">
+      <div>
+        <strong>Camera not started</strong>
+        Tap <b>Start camera</b> below. If this device has no camera, or the page is not on a
+        secure origin, use <b>Upload photo</b> instead.
+      </div>
+    </div>
+    <div class="hint" id="hint">Fill the square with the badge head. Hold flat and steady.</div>
+    <div class="flash" id="flash"></div>
+    <div class="busy" id="busy"><div><div class="spin"></div>Reading badge…</div></div>
+  </div>
+
+  <div class="row">
+    <button class="primary" id="btnScan" disabled>Scan Badge</button>
+    <button class="icon" id="btnTorch" title="Torch">
+      <svg viewBox="0 0 24 24"><path d="M9 2h6v4l-2 3h-2L9 6V2zM11 9h2v13h-2z"/></svg>
+      Torch
+    </button>
+  </div>
+  <div class="row">
+    <button id="btnStart" style="flex:1">Start camera</button>
+    <button id="btnUpload" style="flex:1">Upload photo</button>
+    <input type="file" id="file" accept="image/*" capture="environment" class="hidden">
+  </div>
+
+  <div class="fields">
+    <div>
+      <label for="worker">Worker ID</label>
+      <input id="worker" inputmode="text" autocapitalize="characters" placeholder="W-1042">
+    </div>
+    <div>
+      <label for="shift">Shift hours worn</label>
+      <input id="shift" inputmode="decimal" value="8">
+    </div>
+  </div>
+
+  <!-- ---------------- result ---------------- -->
+  <div class="result" id="result">
+    <div class="verdict" id="verdict">
+      <div class="glyph" id="glyph"></div>
+      <div><h2 id="vTitle">—</h2><span id="vSub"></span></div>
+    </div>
+    <div class="metrics">
+      <div class="metric"><i>Cumulative dose</i><b id="mDose">—</b>
+        <small>ppm&middot;hr</small></div>
+      <div class="metric"><i>8&nbsp;h TWA</i><b id="mTwa">—</b>
+        <small>ppm &middot; TLV 1.0</small></div>
+      <div class="metric"><i>Darkening &minus;&Delta;L*</i><b id="mDl">—</b>
+        <small>primary observable</small></div>
+      <div class="metric"><i>&Delta;E<sub>00</sub></i><b id="mDe">—</b>
+        <small>colorimetric record</small></div>
+    </div>
+    <div class="advice" id="advice"></div>
+    <div class="flags" id="flags"></div>
+  </div>
+
+  <details id="histBox">
+    <summary>Recent scans on this device (<span id="histN">0</span>) &middot;
+      <span id="queueN">0</span> queued</summary>
+    <div class="hist" id="hist"></div>
+  </details>
+
+  <footer>
+    <b>What this measures.</b> The badge is a passive lead-acetate dosimeter: it darkens in
+    proportion to the H₂S it has absorbed, so a scan gives the <em>cumulative</em> exposure
+    over the time it was worn. It cannot tell you the concentration right now, and one scan
+    cannot recover a 15-minute STEL peak — for that, scan at the start and end of the period,
+    or use a portable monitor.
+    <br><br>
+    <b>If a reading looks wrong.</b> Do not re-scan repeatedly to get a better number. Follow
+    the on-screen instruction once; if it fails again, send the badge for lab analysis and
+    record the worker as unmonitored for the shift.
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================================
+   Badge geometry - taken from engine/badge_spec.py so the drawn reticle and
+   the printed artwork cannot drift apart.
+   ========================================================================= */
+const SPEC = {
+  head_mm: 30.0, marker_mm: 4.5, marker_inset_mm: 3.5,
+  well_mm: 12.0, pad_mm: 10.0, ring_radius_mm: 8.6, patch_mm: 2.2, n_patches: 12,
+};
+
+function drawReticle(){
+  const svg = document.getElementById('overlay');
+  const VB = 300, VH = 400;
+  const box = VB * 0.72;                 // must match .badgeframe width in CSS
+  const x0 = (VB - box) / 2, y0 = (VH - box) / 2;
+  const s  = box / SPEC.head_mm;         // viewBox units per mm
+  const m  = SPEC.marker_mm * s;
+  const ins= SPEC.marker_inset_mm * s;
+  const cx = VB/2, cy = VH/2;
+
+  const parts = [];
+  // Dim everything outside the target square, so the eye is pulled into the box.
+  parts.push(`<path d="M0 0H${VB}V${VH}H0Z M${x0} ${y0}H${x0+box}V${y0+box}H${x0}Z"
+    fill="rgba(4,7,10,.5)" fill-rule="evenodd"/>`);
+  parts.push(`<rect x="${x0}" y="${y0}" width="${box}" height="${box}" rx="3"
+    fill="none" stroke="rgba(56,189,248,.55)" stroke-width="1.4"/>`);
+
+  // The four ArUco marker positions, drawn as filled corner squares because that is what
+  // the detector is actually looking for. Aligning these is the whole task.
+  const corners = [[x0+ins, y0+ins], [x0+box-ins-m, y0+ins],
+                   [x0+box-ins-m, y0+box-ins-m], [x0+ins, y0+box-ins-m]];
+  for(const [mx,my] of corners){
+    parts.push(`<rect x="${mx}" y="${my}" width="${m}" height="${m}" rx="1"
+      fill="none" stroke="#38bdf8" stroke-width="2"/>`);
+    parts.push(`<rect x="${mx+m*0.22}" y="${my+m*0.22}" width="${m*0.56}" height="${m*0.56}"
+      fill="rgba(56,189,248,.35)"/>`);
+  }
+  // Reagent well and the reference-patch ring.
+  parts.push(`<circle cx="${cx}" cy="${cy}" r="${SPEC.well_mm*s/2}" fill="none"
+    stroke="rgba(255,255,255,.7)" stroke-width="1.5" stroke-dasharray="5 4"/>`);
+  const rr = SPEC.ring_radius_mm * s, pr = SPEC.patch_mm * s / 2;
+  for(let i=0;i<SPEC.n_patches;i++){
+    const a = (-90 + i*360/SPEC.n_patches) * Math.PI/180;
+    parts.push(`<rect x="${cx+rr*Math.cos(a)-pr}" y="${cy+rr*Math.sin(a)-pr}"
+      width="${pr*2}" height="${pr*2}" fill="rgba(255,255,255,.22)"/>`);
+  }
+  svg.innerHTML = parts.join('');
+}
+drawReticle();
+
+/* =========================================================================
+   Elements and small helpers
+   ========================================================================= */
+const $ = id => document.getElementById(id);
+const video=$('video'), stage=$('stage'), busy=$('busy'), flash=$('flash');
+const BANDS = {
+  safe:     {c:'#2e7d32', t:'SAFE',       g:'check'},
+  elevated: {c:'#f9a825', t:'ELEVATED',   g:'watch'},
+  warning:  {c:'#ef6c00', t:'WARNING',    g:'alert'},
+  critical: {c:'#c62828', t:'CRITICAL',   g:'alert'},
+  invalid:  {c:'#616161', t:'UNREADABLE', g:'query'},
+};
+const GLYPHS = {
+  check:'<path d="M4 12.5l5 5L20 6.5"/>',
+  watch:'<path d="M12 7v6M12 17h.01"/><circle cx="12" cy="12" r="9"/>',
+  alert:'<path d="M12 3l9.5 17H2.5L12 3zM12 9v5.5M12 17.5h.01"/>',
+  query:'<circle cx="12" cy="12" r="9"/><path d="M9.2 9.3A2.9 2.9 0 0114.9 10c0 1.9-2.9 2.2-2.9 4M12 18h.01"/>',
+};
+const fmt = (v, n=2) => (v===null||v===undefined||!isFinite(v)) ? '—' : Number(v).toFixed(n);
+const nowISO = () => new Date().toISOString().replace(/\.\d+Z$/,'Z');
+
+/* Remember the worker ID between scans - retyping it at every badge is how the wrong ID
+   ends up on an exposure record. */
+try{
+  $('worker').value = localStorage.getItem('h2s.worker') || '';
+  $('shift').value  = localStorage.getItem('h2s.shift')  || '8';
+}catch(e){}
+$('worker').addEventListener('change', e => { try{ localStorage.setItem('h2s.worker', e.target.value.trim()); }catch(_){} });
+$('shift').addEventListener('change', e => { try{ localStorage.setItem('h2s.shift', e.target.value.trim()); }catch(_){} });
+
+/* =========================================================================
+   Camera
+   ========================================================================= */
+let stream=null, track=null, torchOn=false, torchSupported=false;
+
+async function startCamera(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    return camFail('This browser exposes no camera API. Use Upload photo.');
+  }
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio:false,
+      video:{
+        facingMode:{ideal:'environment'},
+        width:{ideal:1920}, height:{ideal:1440},
+        // Fixed focus fights the macro distance a badge is held at; continuous is what
+        // actually gets the printed patches sharp enough to sample.
+        focusMode:{ideal:'continuous'}
+      }
+    });
+  }catch(err){
+    const why = (err && err.name==='NotAllowedError')
+      ? 'Camera permission was refused. Allow it in the browser’s site settings, then retry.'
+      : (location.protocol!=='https:' && location.hostname!=='localhost')
+        ? 'Browsers only allow the camera on a secure origin. Open this page over HTTPS (or at localhost) — or use Upload photo.'
+        : 'Could not open the camera: ' + (err && err.message || err);
+    return camFail(why);
+  }
+  video.srcObject = stream;
+  track = stream.getVideoTracks()[0];
+  stage.classList.remove('idle');
+  $('camnote').classList.add('hidden');
+  $('btnScan').disabled = false;
+  $('btnStart').textContent = 'Restart camera';
+  await enableTorch(true);
+  const caps = track.getCapabilities ? track.getCapabilities() : {};
+  torchSupported = !!caps.torch;
+  if(!torchSupported){
+    setHint('Torch not available on this camera. Under a sodium lamp, add any white light or '
+          + 'the reading will be refused.', true);
+  }
+}
+
+function camFail(msg){
+  $('camnote').classList.remove('hidden');
+  $('camnote').innerHTML = '<div><strong>Camera unavailable</strong>'+msg+'</div>';
+  $('btnScan').disabled = true;
+}
+
+/* The torch is instrument hardware here, not a convenience. Measured on the engine's own
+   corpus: torch off under sodium light gives a channel balance of 0.005-0.2 and the scan is
+   either warned or refused; torch on gives 0.53-0.72 and reads to within 3%. */
+async function enableTorch(on){
+  if(!track || !track.applyConstraints) return false;
+  try{
+    await track.applyConstraints({advanced:[{torch:!!on}]});
+    torchOn = !!on;
+    $('btnTorch').classList.toggle('on', torchOn);
+    return true;
+  }catch(e){ torchOn=false; $('btnTorch').classList.remove('on'); return false; }
+}
+
+$('btnStart').addEventListener('click', ()=>{ stopCamera(); startCamera(); });
+$('btnTorch').addEventListener('click', async ()=>{
+  const ok = await enableTorch(!torchOn);
+  if(!ok) setHint('This device will not let the page control the torch. Use a hand torch or '
+                + 'move into broadband light.', true);
+});
+function stopCamera(){ if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; track=null; } }
+
+function setHint(text, warn){
+  const h = $('hint');
+  h.textContent = text;
+  h.style.color = warn ? '#ffd479' : '#cfe0ee';
+}
+
+/* =========================================================================
+   Capture and submit
+   ========================================================================= */
+$('btnScan').addEventListener('click', async ()=>{
+  if(!track) return;
+  flash.classList.add('on'); setTimeout(()=>flash.classList.remove('on'), 30);
+  const blob = await grabFrame();
+  if(blob) submit(blob);
+});
+
+$('btnUpload').addEventListener('click', ()=> $('file').click());
+$('file').addEventListener('change', e=>{
+  const f = e.target.files && e.target.files[0];
+  if(f) submit(f);
+  e.target.value = '';
+});
+
+async function grabFrame(){
+  const w = video.videoWidth, h = video.videoHeight;
+  if(!w || !h){ setHint('Camera is still warming up — try again in a moment.', true); return null; }
+  // Downscale to 1600 px on the long side. The engine works at 2000 px and gains nothing
+  // above that; a 4.5 mm marker still spans well over 100 px when the badge fills the box,
+  // and the smaller upload matters on a plant with poor signal.
+  const scale = Math.min(1, 1600 / Math.max(w, h));
+  const cw = Math.round(w*scale), ch = Math.round(h*scale);
+  const c = document.createElement('canvas'); c.width=cw; c.height=ch;
+  c.getContext('2d', {alpha:false}).drawImage(video, 0, 0, cw, ch);
+  // Quality 0.92, not 0.8: JPEG chroma subsampling and ringing are colour errors, and this
+  // instrument measures colour differences of a couple of dE.
+  return await new Promise(res => c.toBlob(res, 'image/jpeg', 0.92));
+}
+
+function getPosition(){
+  return new Promise(res=>{
+    if(!navigator.geolocation) return res(null);
+    const done = p => res(p);
+    navigator.geolocation.getCurrentPosition(
+      p => done({lat:p.coords.latitude, lng:p.coords.longitude, acc:p.coords.accuracy}),
+      () => done(null),
+      {enableHighAccuracy:true, timeout:4000, maximumAge:30000}
+    );
+  });
+}
+
+async function submit(blob){
+  busy.classList.add('on');
+  const pos = await getPosition();
+  const fd = new FormData();
+  fd.append('image', blob, 'badge.jpg');
+  fd.append('worker_id', ($('worker').value || 'UNKNOWN').trim().toUpperCase());
+  fd.append('shift_hours', $('shift').value || '8');
+  fd.append('scanned_at', nowISO());
+  fd.append('device', navigator.userAgent.slice(0,180));
+  fd.append('app_version', 'scanner-1.0.0');
+  fd.append('client_scan_id', uuid());
+  if(pos){ fd.append('lat', pos.lat); fd.append('lng', pos.lng); fd.append('accuracy_m', pos.acc); }
+
+  try{
+    const r = await fetch('/scan', {method:'POST', body:fd});
+    const j = await r.json();
+    busy.classList.remove('on');
+    if(!r.ok) return showError(j.error || ('Server returned ' + r.status));
+    render(j);
+    remember(j);
+  }catch(err){
+    busy.classList.remove('on');
+    // No signal. Queue it rather than lose it - a missing exposure record is worse than a
+    // late one, and shift change on a plant is exactly when the network is worst.
+    await queueScan(blob, {
+      worker_id: ($('worker').value||'UNKNOWN').trim().toUpperCase(),
+      shift_hours: $('shift').value||'8', scanned_at: nowISO(),
+      client_scan_id: uuid(), device:'queued',
+      lat: pos?pos.lat:null, lng: pos?pos.lng:null, accuracy_m: pos?pos.acc:null
+    });
+    showQueued();
+  }
+}
+
+function uuid(){
+  if(crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, ch=>{
+    const r = crypto.getRandomValues(new Uint8Array(1))[0] % 16;
+    return (ch==='x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+/* =========================================================================
+   Rendering the verdict
+   ========================================================================= */
+function render(j){
+  const band = BANDS[j.band] || BANDS.invalid;
+  $('verdict').style.background = band.c;
+  $('glyph').innerHTML = '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">'
+    + GLYPHS[band.g] + '</svg>';
+  $('vTitle').textContent = j.ok ? (j.band_label || band.t).toUpperCase() : 'UNREADABLE';
+  $('vSub').textContent = j.ok
+    ? `${j.worker_id} · ${j.status} · badge worn ${fmt(j.shift_hours,0)} h`
+    : `${j.worker_id} · no defensible reading`;
+
+  $('mDose').textContent = fmt(j.dose_ppm_hr, 2);
+  $('mTwa').textContent  = fmt(j.twa_ppm, 3);
+  $('mDl').textContent   = fmt(j.delta_l_star, 2);
+  $('mDe').textContent   = fmt(j.delta_e00, 2);
+  $('mTwa').style.color  = j.ok && j.twa_ppm >= 1.0 ? '#ff9b6b' : '';
+
+  let advice = '';
+  if(j.ok){
+    advice = j.action || '';
+    if(j.location_mocked)
+      advice += ' <em>No GPS fix, so this scan was placed at a demonstration coordinate and '
+             +  'is drawn hollow on the map.</em>';
+  }else{
+    advice = '<b>' + (j.operator_hint || 'Retake the photograph.') + '</b>'
+           + (j.reason ? ' <em>' + j.reason + '</em>' : '');
+  }
+  $('advice').innerHTML = advice;
+
+  const flags = $('flags'); flags.innerHTML = '';
+  (j.warnings||[]).forEach(w=>{
+    const d = document.createElement('div'); d.className='flag'; d.textContent = w;
+    flags.appendChild(d);
+  });
+  $('result').classList.add('show');
+  if(navigator.vibrate) navigator.vibrate(j.band==='critical' ? [90,60,90,60,180]
+                                        : j.ok ? 40 : [60,50,60]);
+  setHint(j.ok ? 'Reading recorded. Next badge.' : 'Reading refused — follow the instruction above.',
+          !j.ok);
+}
+
+function showError(msg){
+  $('verdict').style.background = '#616161';
+  $('glyph').innerHTML = '<svg viewBox="0 0 24 24" stroke-linecap="round">'+GLYPHS.query+'</svg>';
+  $('vTitle').textContent = 'ERROR';
+  $('vSub').textContent = 'the request was rejected';
+  ['mDose','mTwa','mDl','mDe'].forEach(id=>$(id).textContent='—');
+  $('advice').innerHTML = '<b>'+msg+'</b>';
+  $('flags').innerHTML='';
+  $('result').classList.add('show');
+}
+
+function showQueued(){
+  $('verdict').style.background = '#37474f';
+  $('glyph').innerHTML = '<svg viewBox="0 0 24 24" stroke-linecap="round">'+GLYPHS.watch+'</svg>';
+  $('vTitle').textContent = 'QUEUED';
+  $('vSub').textContent = 'no network — stored on this device';
+  ['mDose','mTwa','mDl','mDe'].forEach(id=>$(id).textContent='—');
+  $('advice').innerHTML = '<b>This badge photograph is saved and will be read and logged '
+    + 'automatically as soon as the phone has signal.</b> <em>The worker is not yet cleared: '
+    + 'the exposure is unknown until it uploads.</em>';
+  $('flags').innerHTML='';
+  $('result').classList.add('show');
+  refreshCounts();
+}
+
+/* =========================================================================
+   Local history (display only) and the offline queue (durable)
+   ========================================================================= */
+function remember(j){
+  let h=[];
+  try{ h = JSON.parse(localStorage.getItem('h2s.hist')||'[]'); }catch(e){}
+  h.unshift({w:j.worker_id, b:j.band, t:j.twa_ppm, at:j.scanned_at, ok:j.ok, id:j.scan_id});
+  h = h.slice(0,40);
+  try{ localStorage.setItem('h2s.hist', JSON.stringify(h)); }catch(e){}
+  drawHistory(h);
+}
+function drawHistory(h){
+  if(!h){ try{ h = JSON.parse(localStorage.getItem('h2s.hist')||'[]'); }catch(e){ h=[]; } }
+  $('histN').textContent = h.length;
+  $('hist').innerHTML = h.length ? '' : '<div class="hitem" style="border:0;color:#6b7885">'
+    + 'No scans on this device yet.</div>';
+  h.forEach(r=>{
+    const band = BANDS[r.b] || BANDS.invalid;
+    const el = document.createElement('div'); el.className='hitem';
+    el.innerHTML = `<span class="swatch" style="background:${band.c}"></span>
+      <span><span class="who">${escapeHtml(r.w||'?')}</span>
+      <span class="when">${(r.at||'').replace('T',' ').replace('Z',' UTC')}</span></span>
+      <span class="val">${r.ok?fmt(r.t,3)+' <small>ppm</small>':'—'}</span>`;
+    $('hist').appendChild(el);
+  });
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+drawHistory();
+
+/* IndexedDB rather than localStorage for the queue: the payload is an image Blob, which
+   localStorage cannot hold, and a queued exposure record must survive the tab being killed. */
+const DB_NAME='h2s-queue', STORE='pending';
+function idb(){
+  return new Promise((res,rej)=>{
+    const rq = indexedDB.open(DB_NAME, 1);
+    rq.onupgradeneeded = () => rq.result.createObjectStore(STORE, {keyPath:'key', autoIncrement:true});
+    rq.onsuccess = () => res(rq.result);
+    rq.onerror   = () => rej(rq.error);
+  });
+}
+async function queueScan(blob, meta){
+  try{
+    const db = await idb();
+    await new Promise((res,rej)=>{
+      const tx = db.transaction(STORE,'readwrite');
+      tx.objectStore(STORE).add({blob, meta, queued_at:nowISO()});
+      tx.oncomplete=res; tx.onerror=()=>rej(tx.error);
+    });
+  }catch(e){ /* Private-browsing modes block IndexedDB; nothing further we can do here. */ }
+}
+async function pending(){
+  try{
+    const db = await idb();
+    return await new Promise((res,rej)=>{
+      const rq = db.transaction(STORE,'readonly').objectStore(STORE).getAll();
+      rq.onsuccess=()=>res(rq.result||[]); rq.onerror=()=>rej(rq.error);
+    });
+  }catch(e){ return []; }
+}
+async function dropQueued(key){
+  try{
+    const db = await idb();
+    await new Promise(res=>{
+      const tx = db.transaction(STORE,'readwrite');
+      tx.objectStore(STORE).delete(key); tx.oncomplete=res; tx.onerror=res;
+    });
+  }catch(e){}
+}
+async function flushQueue(){
+  if(!navigator.onLine) return;
+  const items = await pending();
+  for(const it of items){
+    const fd = new FormData();
+    fd.append('image', it.blob, 'badge.jpg');
+    Object.entries(it.meta||{}).forEach(([k,v])=>{ if(v!==null && v!==undefined) fd.append(k, v); });
+    fd.append('app_version','scanner-1.0.0-queued');
+    try{
+      const r = await fetch('/scan', {method:'POST', body:fd});
+      if(r.ok){
+        const j = await r.json();
+        // client_scan_id makes the server idempotent, so a retry that half-succeeded cannot
+        // double-log the same badge - a duplicated exposure record is a false signal in both
+        // directions.
+        await dropQueued(it.key);
+        remember(j);
+      }else if(r.status>=400 && r.status<500){
+        await dropQueued(it.key);   // malformed and will never succeed; stop retrying it
+      }
+    }catch(e){ break; }             // still offline
+  }
+  refreshCounts();
+}
+async function refreshCounts(){
+  const p = await pending();
+  $('queueN').textContent = p.length;
+}
+
+/* =========================================================================
+   Connectivity and service worker
+   ========================================================================= */
+function netState(){
+  const on = navigator.onLine;
+  $('netDot').classList.toggle('off', !on);
+  $('netTxt').textContent = on ? 'online' : 'offline · queuing';
+  if(on) flushQueue();
+}
+addEventListener('online', netState);
+addEventListener('offline', netState);
+netState(); refreshCounts();
+setInterval(()=>{ if(navigator.onLine) flushQueue(); }, 30000);
+
+if('serviceWorker' in navigator && location.protocol==='https:' || location.hostname==='localhost'){
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) netState(); });
+</script>
+</body>
+</html>

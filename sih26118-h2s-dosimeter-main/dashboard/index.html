@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b0e11">
+<title>H2S Exposure Dashboard - MRPL</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<!--
+  SIH26118 - HSE risk dashboard.
+
+  The heat layer is drawn from the server's own inverse-distance grid (/api/heatmap), not from
+  a generic point-density heatmap plugin. That is a deliberate choice: a density plugin would
+  colour the map by how many badges were scanned somewhere, and the place with the most scans
+  is the exit kiosk. What an HSE lead needs is the interpolated *exposure*, together with an
+  honest statement of how much evidence sits behind each cell - which is why cells with no
+  badge inside the search radius are left uncoloured and cells supported only by a distant
+  badge are drawn faint. hse/core.py returns the support and nearest-scan layers for exactly
+  this purpose.
+
+  Leaflet is loaded from a CDN. On an air-gapped plant network, drop leaflet.js and
+  leaflet.css into dashboard/vendor/ and change the two tags below; everything else here is
+  self-contained.
+-->
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#0b0e11; --panel:#141a20; --panel-2:#1b232b; --line:#28323c;
+    --ink:#eef2f6; --ink-dim:#9aa7b4; --ink-faint:#6b7885;
+    --safe:#2e7d32; --elevated:#f9a825; --warning:#ef6c00; --critical:#c62828;
+    --invalid:#616161; --accent:#38bdf8;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans)}
+  body{display:flex;flex-direction:column;overflow:hidden}
+
+  /* ---- top bar ---- */
+  .bar{display:flex;align-items:center;gap:14px;padding:10px 16px;background:var(--panel);
+       border-bottom:1px solid var(--line);flex:0 0 auto;flex-wrap:wrap}
+  .bar h1{margin:0;font-size:14.5px;font-weight:650;letter-spacing:.2px;white-space:nowrap}
+  .bar h1 span{display:block;font-size:10.5px;font-weight:500;color:var(--ink-faint);
+               text-transform:uppercase;letter-spacing:.7px;margin-top:2px}
+  .seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .seg button{background:transparent;border:0;color:var(--ink-dim);font:600 12px var(--sans);
+              padding:8px 11px;cursor:pointer}
+  .seg button.on{background:var(--accent);color:#04121c}
+  .bar .sp{flex:1}
+  .btn{background:var(--panel-2);border:1px solid var(--line);color:var(--ink);
+       font:600 12px var(--sans);padding:8px 12px;border-radius:9px;cursor:pointer}
+  .btn:hover{border-color:#3d4c5a}
+  .btn.warn{color:#ffb4a2;border-color:#5a3030}
+  .live{font-size:11.5px;color:var(--ink-faint);display:flex;align-items:center;gap:7px;
+        white-space:nowrap}
+  .pulse{width:8px;height:8px;border-radius:50%;background:#7ee08a;
+         box-shadow:0 0 0 0 rgba(126,224,138,.7);animation:pl 2.4s infinite}
+  .pulse.stop{background:var(--ink-faint);animation:none;box-shadow:none}
+  @keyframes pl{70%{box-shadow:0 0 0 7px rgba(126,224,138,0)}100%{box-shadow:0 0 0 0 rgba(126,224,138,0)}}
+
+  /* ---- banner ---- */
+  .banner{display:none;padding:8px 16px;font-size:12px;background:#2a2415;color:#f0cf8a;
+          border-bottom:1px solid #4a3d1c;flex:0 0 auto}
+  .banner.on{display:block}
+  .banner b{color:#ffd479}
+
+  /* ---- layout ---- */
+  .main{flex:1;display:flex;min-height:0}
+  #map{flex:1;min-width:0;background:#0e1318}
+  aside{width:372px;flex:0 0 auto;border-left:1px solid var(--line);background:var(--panel);
+        overflow-y:auto;overflow-x:hidden}
+
+  /* Dark basemap from standard OSM tiles. Applied to the tile pane only, so the safety
+     colours of the pins and the heat surface are never altered - inverting those would be
+     a correctness bug, not a style choice. */
+  .leaflet-tile-pane{filter:invert(1) hue-rotate(185deg) brightness(.93) contrast(.86)
+                            saturate(.55)}
+  body.light .leaflet-tile-pane{filter:none}
+  .leaflet-container{background:#0e1318;font-family:var(--sans)}
+  .leaflet-popup-content-wrapper{background:#161d24;color:var(--ink);border-radius:11px;
+      box-shadow:0 10px 34px -12px #000;border:1px solid var(--line)}
+  .leaflet-popup-tip{background:#161d24;border:1px solid var(--line)}
+  .leaflet-popup-content{margin:12px 14px;font-size:12.5px;line-height:1.55;width:262px!important}
+  .leaflet-control-attribution{background:rgba(11,14,17,.78)!important;color:#7d8b98!important}
+  .leaflet-control-attribution a{color:#9fb3c4!important}
+  .leaflet-bar a{background:#161d24!important;color:#dfe8f0!important;border-color:#28323c!important}
+
+  /* ---- KPIs ---- */
+  .kpis{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line)}
+  .kpi{background:var(--panel);padding:12px 14px}
+  .kpi i{font-style:normal;font-size:10px;text-transform:uppercase;letter-spacing:.7px;
+         color:var(--ink-faint);display:block}
+  .kpi b{display:block;font:700 22px/1.2 var(--mono);font-variant-numeric:tabular-nums;
+         margin-top:4px}
+  .kpi small{display:block;font-size:10.5px;color:var(--ink-faint);margin-top:2px}
+
+  section{border-top:1px solid var(--line);padding:14px}
+  section h2{margin:0 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.8px;
+             color:var(--ink-dim)}
+  section p.note{margin:0 0 10px;font-size:11.5px;line-height:1.55;color:var(--ink-faint)}
+
+  .card{background:var(--panel-2);border:1px solid var(--line);border-left-width:3px;
+        border-radius:10px;padding:11px 12px;margin-bottom:9px;cursor:pointer}
+  .card:hover{border-color:#3d4c5a}
+  .card .top{display:flex;align-items:baseline;gap:8px}
+  .card .top b{font-size:13px}
+  .card .top .pk{margin-left:auto;font:700 15px var(--mono);font-variant-numeric:tabular-nums}
+  .card .meta{font-size:11px;color:var(--ink-faint);margin-top:3px}
+  .card .interp{font-size:11.5px;line-height:1.5;color:#cfdae4;margin-top:7px;display:none}
+  .card.open .interp{display:block}
+  .tag{font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;padding:2px 6px;
+       border-radius:5px;background:#243040;color:#9fc3dd;font-weight:700}
+  .tag.sour{background:#3a2318;color:#ffb992}
+
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.6px;
+     color:var(--ink-faint);font-weight:600;padding:0 0 6px}
+  th.r,td.r{text-align:right}
+  td{padding:6px 0;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
+  tbody tr{cursor:pointer}
+  tbody tr:hover td{color:#fff}
+  .sw{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
+  .over{color:#ff9b6b;font-weight:700}
+  .bad{color:#c9a0a0}
+
+  /* ---- legend ---- */
+  .legend{position:absolute;left:12px;bottom:22px;z-index:600;background:rgba(15,20,26,.93);
+          border:1px solid var(--line);border-radius:11px;padding:11px 12px;width:224px;
+          font-size:11px;line-height:1.5;backdrop-filter:blur(6px)}
+  .legend h3{margin:0 0 8px;font-size:10px;text-transform:uppercase;letter-spacing:.8px;
+             color:var(--ink-dim)}
+  .legend .row{display:flex;align-items:center;gap:7px;margin-bottom:4px}
+  .legend .dot{width:10px;height:10px;border-radius:50%}
+  .legend .hollow{width:10px;height:10px;border-radius:50%;border:2px solid #9aa7b4}
+  .legend .ramp{height:9px;border-radius:3px;margin:3px 0 5px;
+      background:linear-gradient(90deg,#2e7d32,#c62828)}   /* replaced at runtime from STOPS */
+  .legend .ends{position:relative;height:12px;color:var(--ink-faint);
+                font-size:9.5px;font-family:var(--mono)}
+  .legend p{margin:8px 0 0;color:var(--ink-faint);font-size:10.5px;line-height:1.5}
+  .layers{position:absolute;right:12px;top:12px;z-index:600;background:rgba(15,20,26,.93);
+          border:1px solid var(--line);border-radius:11px;padding:9px 11px;font-size:12px;
+          backdrop-filter:blur(6px)}
+  .layers label{display:flex;align-items:center;gap:8px;padding:3px 0;cursor:pointer;
+                color:var(--ink-dim)}
+  .layers input{accent-color:var(--accent)}
+  .maprel{position:relative;flex:1;min-width:0;display:flex}
+
+  .empty{padding:26px 16px;text-align:center;color:var(--ink-faint);font-size:12.5px;
+         line-height:1.6}
+  .empty b{display:block;color:var(--ink);font-size:14px;margin-bottom:6px}
+  .fail{padding:16px;margin:14px;border:1px solid #5a3030;background:#2a1a1a;border-radius:10px;
+        font-size:12.5px;line-height:1.6;color:#ffc9c9}
+  @media (max-width:900px){
+    .main{flex-direction:column}
+    aside{width:auto;border-left:0;border-top:1px solid var(--line);max-height:52vh}
+    .maprel{min-height:46vh}
+  }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <h1>H₂S Exposure &amp; Risk<span>MRPL Refinery &middot; SIH26118</span></h1>
+  <div class="seg" id="win">
+    <button data-h="1">1 h</button>
+    <button data-h="8" class="on">8 h</button>
+    <button data-h="24">24 h</button>
+    <button data-h="72">72 h</button>
+  </div>
+  <button class="btn" id="btnLight">Light map</button>
+  <div class="sp"></div>
+  <button class="btn" id="btnSeed">Seed demo data</button>
+  <button class="btn warn" id="btnClear">Clear demo</button>
+  <div class="live"><span class="pulse" id="pulse"></span><span id="liveTxt">live</span></div>
+</div>
+
+<div class="banner" id="banner"></div>
+
+<div class="main">
+  <div class="maprel">
+    <div id="map"></div>
+    <div class="layers">
+      <label><input type="checkbox" id="lHeat" checked> Exposure surface</label>
+      <label><input type="checkbox" id="lPins" checked> Worker scans</label>
+      <label><input type="checkbox" id="lClusters" checked> Clusters</label>
+      <label><input type="checkbox" id="lUnits" checked> Process units</label>
+    </div>
+    <div class="legend">
+      <h3>8-hour TWA (ppm)</h3>
+      <div class="ramp" id="ramp"></div>
+      <div class="ends" id="ends"></div>
+      <div class="row"><span class="dot" style="background:#c62828"></span> Critical &ge;5 ppm</div>
+      <div class="row"><span class="dot" style="background:#ef6c00"></span> Warning &ge;1 ppm (TLV)</div>
+      <div class="row"><span class="dot" style="background:#f9a825"></span> Elevated &ge;0.5 ppm</div>
+      <div class="row"><span class="dot" style="background:#2e7d32"></span> Safe</div>
+      <div class="row"><span class="dot" style="background:#616161"></span> Unreadable badge</div>
+      <div class="row"><span class="hollow"></span> Coordinate generated, not observed</div>
+      <p>Interpolated between badge scans. Faint areas are supported only by a distant badge;
+         uncoloured areas had no badge within 350 m. Not a dispersion model.</p>
+    </div>
+  </div>
+
+  <aside id="side">
+    <div class="kpis">
+      <div class="kpi"><i>Scans in window</i><b id="kScans">—</b><small id="kWorkers">&nbsp;</small></div>
+      <div class="kpi"><i>Peak TWA</i><b id="kPeak">—</b><small>ppm &middot; TLV 1.0</small></div>
+      <div class="kpi"><i>Over TLV</i><b id="kOver">—</b><small>scans &ge;1 ppm</small></div>
+      <div class="kpi"><i>Read rate</i><b id="kRead">—</b><small id="kInvalid">&nbsp;</small></div>
+    </div>
+    <div id="panels"></div>
+  </aside>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+"use strict";
+
+/* =========================================================================
+   Config
+   ========================================================================= */
+const qs = new URLSearchParams(location.search);
+const API = (qs.get('api') || '').replace(/\/$/, '');
+const MRPL_CENTRE = [12.9782, 74.8560];
+const REFRESH_MS = 30000;
+const BAND_COLOUR = {critical:'#c62828', warning:'#ef6c00', elevated:'#f9a825',
+                     safe:'#2e7d32', invalid:'#616161'};
+let hours = 8, autoRefresh = true, timer = null, payload = null;
+
+const $ = id => document.getElementById(id);
+const fmt = (v,n=2) => (v===null||v===undefined||!isFinite(v)) ? '—' : Number(v).toFixed(n);
+const esc = s => String(s===null||s===undefined?'':s).replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+if(typeof L === 'undefined'){
+  document.querySelector('aside').innerHTML =
+    '<div class="fail"><b>Leaflet could not be loaded.</b><br>This page pulls Leaflet from '
+  + 'unpkg.com. On a network without internet access, download leaflet.js and leaflet.css '
+  + 'into <code>dashboard/vendor/</code> and point the two tags in this file at them — '
+  + 'nothing else here needs a network.</div>';
+  throw new Error('leaflet missing');
+}
+
+/* =========================================================================
+   Map
+   ========================================================================= */
+const map = L.map('map', {zoomControl:true, preferCanvas:true})
+             .setView(MRPL_CENTRE, 15);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom:19, attribution:'&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+const layers = {
+  heat:     L.layerGroup().addTo(map),
+  pins:     L.layerGroup().addTo(map),
+  clusters: L.layerGroup().addTo(map),
+  units:    L.layerGroup().addTo(map),
+};
+const bind = (id, key) => $(id).addEventListener('change', e => {
+  if(e.target.checked) map.addLayer(layers[key]); else map.removeLayer(layers[key]);
+});
+bind('lHeat','heat'); bind('lPins','pins'); bind('lClusters','clusters'); bind('lUnits','units');
+
+$('btnLight').addEventListener('click', ()=>{
+  document.body.classList.toggle('light');
+  $('btnLight').textContent = document.body.classList.contains('light') ? 'Dark map' : 'Light map';
+});
+
+/* =========================================================================
+   Colour scale
+   -------------------------------------------------------------------------
+   Anchored on the exposure limits rather than on the data range, so the same colour always
+   means the same dose. A scale normalised to the window's own maximum would paint a quiet
+   shift red, which is how a dashboard teaches people to ignore it.
+
+   Two things this gets right that are easy to get wrong:
+
+   * It stops at the critical colour instead of continuing into a darker red. A darker red is
+     *less* salient than a bright one on a dark basemap, so extending the ramp downward made
+     the worst readings the hardest ones to see. Above 5 ppm the action is already "evacuate
+     now"; there is no further visual distinction worth making, so the scale clamps.
+   * Colour is interpolated in the same warped position space the legend gradient is drawn in,
+     so the key matches the map exactly. Interpolating the surface linearly in ppm while
+     drawing the legend at hand-picked percentages - the obvious way to write this - makes the
+     key quietly wrong, which is worse than having no key.
+
+   The square-root warp gives the sub-TLV region a bit under half the bar. That is where the
+   decisions actually live: 0.4 ppm and 0.9 ppm are both compliant but call for different
+   attention, and on a scale running linearly to 5 ppm they would be indistinguishable.
+   ========================================================================= */
+const VMAX = 5.0;
+const STOPS = [
+  [0.00, [ 46,125, 50]],   // safe
+  [0.50, [249,168, 37]],   // elevated
+  [1.00, [239,108,  0]],   // warning - the 1 ppm TLV-TWA
+  [5.00, [198, 40, 40]],   // critical, and the clamp
+];
+const pos = v => Math.sqrt(Math.min(Math.max(v || 0, 0), VMAX) / VMAX);
+
+function ramp(v){
+  const p = pos(v);
+  for(let i=1;i<STOPS.length;i++){
+    const pa = pos(STOPS[i-1][0]), pb = pos(STOPS[i][0]);
+    if(p <= pb || i === STOPS.length - 1){
+      const t = pb > pa ? Math.min(1, Math.max(0, (p - pa) / (pb - pa))) : 0;
+      const ca = STOPS[i-1][1], cb = STOPS[i][1];
+      return [0,1,2].map(k => Math.round(ca[k] + (cb[k] - ca[k]) * t));
+    }
+  }
+  return STOPS[STOPS.length-1][1];
+}
+
+/* The legend is generated from STOPS so it cannot drift away from the surface. */
+(function buildLegend(){
+  $('ramp').style.background = 'linear-gradient(90deg,'
+    + STOPS.map(([v,c]) => `rgb(${c.join(',')}) ${(100*pos(v)).toFixed(2)}%`).join(',') + ')';
+  const ticks = [[0,'0'], [0.5,'0.5'], [1.0,'1.0 TLV'], [5.0,'5+']];
+  $('ends').innerHTML = ticks.map(([v,label],i)=>{
+    const shift = i === 0 ? '0' : i === ticks.length-1 ? '-100%' : '-50%';
+    return `<span style="position:absolute;left:${(100*pos(v)).toFixed(2)}%;`
+         + `transform:translateX(${shift})">${label}</span>`;
+  }).join('');
+})();
+
+/* =========================================================================
+   Heat surface from the server's IDW grid
+   ========================================================================= */
+function drawHeat(grid){
+  layers.heat.clearLayers();
+  if(!grid || !grid.values || !grid.values.length) return;
+  const {nx, ny, bounds, values, nearest_m} = grid;
+  const radius = grid.radius_m || 350;
+
+  const cv = document.createElement('canvas');
+  cv.width = nx; cv.height = ny;
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(nx, ny);
+
+  for(let r=0;r<ny;r++){
+    // The grid's latitude axis runs south to north; canvas rows run top to bottom.
+    const gr = ny - 1 - r;
+    for(let c=0;c<nx;c++){
+      const o = 4*(r*nx + c);
+      const v = values[gr] ? values[gr][c] : null;
+      if(v === null || v === undefined){ img.data[o+3] = 0; continue; }   // no evidence here
+      const [R,G,B] = ramp(v);
+      // Fade with distance to the nearest badge. A cell interpolated from a badge 300 m away
+      // is a much weaker claim than one with a badge in it, and the picture should say so
+      // instead of presenting both at full strength.
+      const near = (nearest_m && nearest_m[gr]) ? nearest_m[gr][c] : null;
+      let conf = 1;
+      if(near !== null && near !== undefined){
+        conf = near <= 60 ? 1 : Math.max(0.22, 1 - (near - 60) / (radius - 60) * 0.78);
+      }
+      img.data[o] = R; img.data[o+1] = G; img.data[o+2] = B;
+      img.data[o+3] = Math.round(255 * 0.62 * conf);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const bb = [[bounds.min_lat, bounds.min_lng], [bounds.max_lat, bounds.max_lng]];
+  L.imageOverlay(cv.toDataURL(), bb, {opacity:1, interactive:false,
+                                      className:'heatimg'}).addTo(layers.heat);
+}
+
+/* =========================================================================
+   Plant units
+   ========================================================================= */
+function drawUnits(plant, rollup){
+  layers.units.clearLayers();
+  if(!plant || !plant.units) return;
+  const byCode = {};
+  (rollup||[]).forEach(u => byCode[u.unit] = u);
+  plant.units.forEach(u=>{
+    const roll = byCode[u.code];
+    const sour = u.h2s_propensity >= 0.30;
+    // Outline weight encodes inherent H2S propensity of the service - a static property of
+    // the process. Fill encodes what the badges actually measured there. Keeping the two
+    // visually separate matters: the expectation must never be mistaken for the measurement.
+    const c = L.circle([u.lat, u.lng], {
+      radius: u.radius_m,
+      color: sour ? '#c98a5e' : '#5a6b7a',
+      weight: 1 + 1.6 * u.h2s_propensity,
+      opacity: 0.75,
+      dashArray: sour ? null : '4 5',
+      fillColor: roll && roll.peak_twa_ppm !== null && roll.peak_twa_ppm !== undefined
+                 ? BAND_COLOUR[roll.band] : '#000',
+      fillOpacity: roll && roll.peak_twa_ppm !== null && roll.peak_twa_ppm !== undefined
+                 ? 0.10 : 0.03,
+    });
+    c.bindTooltip(`<b>${esc(u.code)}</b> ${esc(u.name)}`, {direction:'top', sticky:true});
+    c.bindPopup(
+      `<b>${esc(u.name)}</b> <span class="tag${sour?' sour':''}">`
+      + `${sour ? 'sour service' : 'no sour service'}</span><br>`
+      + `<span style="color:#9aa7b4">Inherent H₂S propensity ${fmt(u.h2s_propensity,2)}`
+      + ` &middot; radius ${u.radius_m} m</span>`
+      + (u.note ? `<br><span style="color:#cfdae4">${esc(u.note)}</span>` : '')
+      + (roll
+          ? `<hr style="border:0;border-top:1px solid #28323c;margin:9px 0">`
+            + `<b>${roll.n_scans}</b> scans from <b>${roll.n_workers}</b> workers in this `
+            + `window &middot; peak <b>${fmt(roll.peak_twa_ppm,3)}</b> ppm`
+            + (roll.n_over_tlv ? ` &middot; <span style="color:#ff9b6b">`
+                + `${roll.n_over_tlv} over TLV</span>` : '')
+            + (roll.n_invalid ? ` &middot; ${roll.n_invalid} unreadable` : '')
+          : `<hr style="border:0;border-top:1px solid #28323c;margin:9px 0">`
+            + `<span style="color:#6b7885">No scans here in this window — which is not the `
+            + `same as no exposure here.</span>`)
+    );
+    c.addTo(layers.units);
+  });
+}
+
+/* =========================================================================
+   Worker scan pins
+   ========================================================================= */
+function drawPins(points){
+  layers.pins.clearLayers();
+  (points||[]).forEach(p=>{
+    if(p.lat===null || p.lng===null || p.lat===undefined || p.lng===undefined) return;
+    const col = BAND_COLOUR[p.band] || BAND_COLOUR.invalid;
+    const mocked = !!p.location_mocked;
+    const m = L.circleMarker([p.lat, p.lng], {
+      radius: p.band==='critical' ? 8 : p.band==='warning' ? 7 : 6,
+      color: mocked ? col : '#0b0e11',
+      weight: mocked ? 2 : 1.4,
+      dashArray: mocked ? '3 3' : null,
+      fillColor: col,
+      // Hollow = the coordinate was generated because there was no GPS fix. The reading is
+      // real; the position is not, and a pin must not imply a location it does not have.
+      fillOpacity: mocked ? 0.14 : 0.92,
+    });
+    m.bindPopup(()=>popupForScan(p), {maxWidth:300});
+    m.addTo(layers.pins);
+    // A GPS fix worse than 40 m is drawn as its own uncertainty circle. At that point the
+    // pin is a neighbourhood, not a spot, and attributing it to a unit is a guess.
+    if(!mocked && p.accuracy_m && p.accuracy_m > 40){
+      L.circle([p.lat,p.lng], {radius:p.accuracy_m, color:col, weight:1, opacity:.28,
+                               fillOpacity:.04, dashArray:'2 4'}).addTo(layers.pins);
+    }
+  });
+}
+
+function popupForScan(p){
+  const col = BAND_COLOUR[p.band] || BAND_COLOUR.invalid;
+  const t = (p.scanned_at||'').replace('T',' ').replace('Z',' UTC');
+  let h = `<div style="display:flex;align-items:center;gap:8px">
+      <span style="width:10px;height:26px;border-radius:3px;background:${col}"></span>
+      <div><b style="font-size:14px">${esc(p.worker_id||'?')}</b>
+      <div style="color:#6b7885;font-size:11px">${esc(t)}</div></div>
+      <b style="margin-left:auto;font-family:var(--mono);font-size:16px">
+        ${p.ok?fmt(p.twa_ppm,3):'—'}</b></div>`;
+  if(p.ok){
+    h += `<hr style="border:0;border-top:1px solid #28323c;margin:9px 0">
+      <table style="width:100%;font-size:11.5px;color:#cfdae4">
+      <tr><td>8&nbsp;h TWA</td><td class="r"><b>${fmt(p.twa_ppm,3)}</b> ppm</td></tr>
+      <tr><td>Cumulative dose</td><td class="r">${fmt(p.dose_ppm_hr,2)} ppm&middot;hr</td></tr>
+      <tr><td>&minus;&Delta;L*</td><td class="r">${fmt(p.delta_l_star,2)}</td></tr>
+      <tr><td>&Delta;E<sub>00</sub></td><td class="r">${fmt(p.delta_e00,2)}</td></tr>
+      <tr><td>Verdict</td><td class="r">${esc(p.verdict||'')}</td></tr>
+      </table>`;
+  }else{
+    h += `<div style="margin-top:8px;color:#f0cf8a;font-size:11.5px;line-height:1.5">
+      Badge could not be read, so this worker has no exposure record for the period. That is
+      itself a finding — the row is kept rather than discarded.</div>`;
+  }
+  if(p.location_mocked){
+    h += `<div style="margin-top:8px;color:#9aa7b4;font-size:11px;line-height:1.5">
+      No GPS fix at scan time: this position was generated for demonstration and should not
+      be attributed to ${esc(p.unit||'this area')}.</div>`;
+  }
+  if(p.id){
+    h += `<div style="margin-top:9px"><a href="${API}/api/scans/${p.id}" target="_blank"
+      style="color:#38bdf8;font-size:11.5px">Open the full audit record &rarr;</a></div>`;
+  }
+  return h;
+}
+
+/* =========================================================================
+   Clusters
+   ========================================================================= */
+function drawClusters(clusters){
+  layers.clusters.clearLayers();
+  (clusters||[]).forEach((c,i)=>{
+    const col = BAND_COLOUR[c.band] || BAND_COLOUR.elevated;
+    L.circle([c.lat,c.lng], {radius:Math.max(c.radius_m, 45), color:col, weight:2.2,
+                             opacity:.9, fillColor:col, fillOpacity:.10,
+                             dashArray:'7 6'}).addTo(layers.clusters);
+    L.marker([c.lat,c.lng], {icon: L.divIcon({
+      className:'', iconSize:[30,30], iconAnchor:[15,15],
+      html:`<div style="width:30px;height:30px;border-radius:50%;background:${col};
+             border:2px solid #0b0e11;color:#fff;font:700 12px/26px var(--sans);
+             text-align:center;box-shadow:0 3px 10px -3px #000">${c.n_scans}</div>`})})
+      .bindPopup(clusterPopup(c, i+1), {maxWidth:300})
+      .addTo(layers.clusters);
+  });
+}
+
+function clusterPopup(c, n){
+  return `<b style="font-size:13.5px">Cluster ${n} — ${esc(c.unit_name||'unmapped area')}</b>
+    <span class="tag${c.sour_service?' sour':''}">
+      ${c.sour_service?'sour service':'no sour service'}</span>
+    <table style="width:100%;font-size:11.5px;color:#cfdae4;margin-top:8px">
+    <tr><td>Peak TWA</td><td class="r"><b>${fmt(c.peak_twa_ppm,3)}</b> ppm</td></tr>
+    <tr><td>Mean TWA</td><td class="r">${fmt(c.mean_twa_ppm,3)} ppm</td></tr>
+    <tr><td>Scans / workers</td><td class="r">${c.n_scans} / <b>${c.n_workers}</b></td></tr>
+    <tr><td>Spread</td><td class="r">${fmt(c.radius_m,0)} m</td></tr>
+    </table>
+    <div style="margin-top:9px;font-size:11.5px;line-height:1.55;color:#e6eef5">
+      ${esc(c.interpretation||'')}</div>`;
+}
+
+/* =========================================================================
+   Side panels
+   ========================================================================= */
+function drawSide(d){
+  const st = d.stats || {};
+  $('kScans').textContent  = st.n ?? 0;
+  $('kWorkers').textContent = `${st.n_workers ?? 0} workers · ${d.n_located ?? 0} located`;
+  $('kPeak').textContent   = fmt(st.peak_twa, 3);
+  $('kPeak').style.color   = (st.peak_twa >= 5) ? '#ff8a80'
+                           : (st.peak_twa >= 1) ? '#ffab70' : '';
+  const over = (st.n_critical||0) + (st.n_warning||0);
+  $('kOver').textContent   = over;
+  $('kOver').style.color   = over ? '#ff9b6b' : '';
+  $('kRead').textContent   = st.read_rate === null || st.read_rate === undefined
+                             ? '—' : (100*st.read_rate).toFixed(0) + '%';
+  $('kRead').style.color   = (st.read_rate !== null && st.read_rate < 0.9) ? '#ffab70' : '';
+  $('kInvalid').textContent = `${st.n_invalid ?? 0} unreadable`;
+
+  const panels = [];
+
+  // ---- clusters -------------------------------------------------------
+  const cl = d.clusters || [];
+  panels.push(`<section><h2>Areas to look at (${cl.length})</h2>
+    <p class="note">Groups of scans at or above 0.5 ppm TWA within 120 m of each other.
+      Worker count matters as much as scan count: several readings from one person points at
+      that person's task or badge, several people points at the area.</p>
+    ${cl.length ? cl.map((c,i)=>`
+      <div class="card" style="border-left-color:${BAND_COLOUR[c.band]||'#f9a825'}"
+           data-lat="${c.lat}" data-lng="${c.lng}">
+        <div class="top"><b>${esc(c.unit_name||'Unmapped area')}</b>
+          <span class="tag${c.sour_service?' sour':''}">${c.sour_service?'sour':'not sour'}</span>
+          <span class="pk">${fmt(c.peak_twa_ppm,2)}</span></div>
+        <div class="meta">${c.n_scans} scans &middot; ${c.n_workers} worker${
+            c.n_workers===1?'':'s'} &middot; ${fmt(c.radius_m,0)} m spread</div>
+        <div class="interp">${esc(c.interpretation||'')}</div>
+      </div>`).join('')
+      : `<div class="empty" style="padding:10px 0">No clustered exposure in this window.
+         With few scans that means little — a quiet map with 4 badges is not evidence of a
+         quiet plant.</div>`}
+    </section>`);
+
+  // ---- workers --------------------------------------------------------
+  const w = (d.workers || []).slice(0, 40);
+  panels.push(`<section><h2>Workers (${(d.workers||[]).length})</h2>
+    <p class="note">Ranked by peak TWA in the window. The unreadable column is deliberately
+      next to the exposure figures — a worker whose badge keeps failing has no record at all.</p>
+    <table><thead><tr><th>Worker</th><th class="r">Peak</th><th class="r">Cumul.</th>
+      <th class="r">Scans</th></tr></thead><tbody>
+    ${w.length ? w.map(r=>`<tr data-worker="${esc(r.worker_id)}">
+        <td><span class="sw" style="background:${
+            BAND_COLOUR[bandOf(r.peak_twa_ppm, r.n_scans > (r.n_invalid||0))]}"></span>
+          ${esc(r.worker_id)}</td>
+        <td class="r ${r.peak_twa_ppm>=1?'over':''}">${fmt(r.peak_twa_ppm,3)}</td>
+        <td class="r">${fmt(r.cumulative_ppm_hr,1)}</td>
+        <td class="r">${r.n_scans}${r.n_invalid?`<span class="bad"> +${r.n_invalid}✕</span>`:''}</td>
+      </tr>`).join('')
+      : `<tr><td colspan="4" style="color:#6b7885">No scans in this window.</td></tr>`}
+    </tbody></table></section>`);
+
+  // ---- units ----------------------------------------------------------
+  const u = (d.units || []).filter(x => x.n_scans > 0);
+  panels.push(`<section><h2>By process unit (${u.length})</h2>
+    <p class="note">Scans outside every mapped unit are grouped as OUTSIDE rather than pushed
+      into the nearest unit — attributing a roadside scan to a process area would put a finding
+      on the wrong unit's record.</p>
+    <table><thead><tr><th>Unit</th><th class="r">Peak</th><th class="r">Workers</th>
+      <th class="r">&ge;TLV</th></tr></thead><tbody>
+    ${u.length ? u.map(r=>`<tr data-unit="${esc(r.unit)}">
+        <td><span class="sw" style="background:${BAND_COLOUR[r.band]||'#616161'}"></span>
+          ${esc(r.unit)}${r.sour_service?'':' <span style="color:#6b7885">·</span>'}</td>
+        <td class="r ${r.peak_twa_ppm>=1?'over':''}">${fmt(r.peak_twa_ppm,3)}</td>
+        <td class="r">${r.n_workers}</td>
+        <td class="r ${r.n_over_tlv?'over':''}">${r.n_over_tlv||'—'}</td>
+      </tr>`).join('')
+      : `<tr><td colspan="4" style="color:#6b7885">No located scans in this window.</td></tr>`}
+    </tbody></table></section>`);
+
+  // ---- what this is ---------------------------------------------------
+  const g = d.grid || {};
+  panels.push(`<section><h2>What this map is</h2>
+    <p class="note">${esc(g.note || '')}</p>
+    <p class="note">Window ${esc((d.window&&d.window.since)||'—')} to now,
+      ${d.n_scans||0} scans, ${d.n_located||0} with a coordinate.
+      Grid ${g.nx||0}&times;${g.ny||0}, IDW power ${fmt(g.power,1)},
+      search radius ${fmt(g.radius_m,0)} m.
+      Server time ${esc(d.server_time||'')}.</p>
+    <p class="note">Fixed-point detectors and a portable monitor remain the instruments that
+      locate a leak. This shows where the exposure record is concentrated, which is a
+      different question and a slower one.</p>
+    </section>`);
+
+  $('panels').innerHTML = panels.join('');
+
+  $('panels').querySelectorAll('.card').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      el.classList.toggle('open');
+      map.setView([+el.dataset.lat, +el.dataset.lng], 17, {animate:true});
+    });
+  });
+  $('panels').querySelectorAll('tr[data-worker]').forEach(tr=>{
+    tr.addEventListener('click', ()=> focusWorker(tr.dataset.worker));
+  });
+  $('panels').querySelectorAll('tr[data-unit]').forEach(tr=>{
+    tr.addEventListener('click', ()=> focusUnit(tr.dataset.unit));
+  });
+}
+
+function bandOf(twa, ok){
+  if(!ok || twa===null || twa===undefined || !isFinite(twa)) return 'invalid';
+  return twa>=5 ? 'critical' : twa>=1 ? 'warning' : twa>=0.5 ? 'elevated' : 'safe';
+}
+
+function focusWorker(id){
+  const pts = (payload && payload.points || []).filter(
+    p => p.worker_id===id && p.lat!==null && p.lat!==undefined);
+  if(!pts.length) return;
+  map.fitBounds(L.latLngBounds(pts.map(p=>[p.lat,p.lng])).pad(0.4), {maxZoom:17});
+}
+function focusUnit(code){
+  const u = (payload && payload.plant && payload.plant.units || []).find(x=>x.code===code);
+  if(!u) return;
+  map.setView([u.lat,u.lng], 17, {animate:true});
+}
+
+/* =========================================================================
+   Load
+   ========================================================================= */
+async function load(){
+  try{
+    const r = await fetch(`${API}/api/heatmap?hours=${hours}&nx=56&ny=56`);
+    if(!r.ok) throw new Error('server returned ' + r.status);
+    const d = await r.json();
+    payload = d;
+    drawHeat(d.grid);
+    drawUnits(d.plant, d.units);
+    drawPins(d.points);
+    drawClusters(d.clusters);
+    drawSide(d);
+    demoBanner(d);
+    $('liveTxt').textContent = autoRefresh
+      ? 'updated ' + new Date().toLocaleTimeString() : 'paused';
+  }catch(err){
+    $('panels').innerHTML = `<div class="fail"><b>Could not reach the API.</b><br>
+      ${esc(err.message||err)}<br><br>Start the server with
+      <code>python3 -m hse.serve_dev --port 8000 --seed-demo 80</code> and open this page from
+      the same origin, or append <code>?api=http://host:8000</code> to this URL.</div>`;
+    $('liveTxt').textContent = 'offline';
+  }
+}
+
+/* A dashboard showing generated data must say so, unmissably and at all times. The exposure
+   record is evidence; the moment demonstration rows look like measurements, it stops being. */
+function demoBanner(d){
+  const n = (d.workers||[]).filter(w => String(w.worker_id||'').startsWith('DEMO-'))
+                           .reduce((a,w)=>a+(w.n_scans||0), 0);
+  const b = $('banner');
+  b.classList.toggle('on', n > 0);
+  if(n > 0){
+    b.innerHTML = `<b>Demonstration data.</b> ${n} of ${d.stats?d.stats.n:n} scans in this `
+      + `window are synthetic (worker IDs prefixed <code>DEMO-</code>, shift <code>DEMO</code>, `
+      + `generated coordinates drawn hollow). Their doses were sampled from each unit's H₂S `
+      + `propensity, not measured from a badge. Use <b>Clear demo</b> before showing real `
+      + `readings.`;
+  }
+}
+
+/* ---- window selector, refresh, demo controls ---- */
+$('win').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if(!b) return;
+  hours = +b.dataset.h;
+  [...$('win').children].forEach(x=>x.classList.toggle('on', x===b));
+  load();
+});
+$('pulse').parentElement.addEventListener('click', ()=>{
+  autoRefresh = !autoRefresh;
+  $('pulse').classList.toggle('stop', !autoRefresh);
+  $('liveTxt').textContent = autoRefresh ? 'live' : 'paused';
+  if(autoRefresh) load();
+});
+$('btnSeed').addEventListener('click', async ()=>{
+  $('btnSeed').disabled = true;
+  try{ await fetch(`${API}/api/demo/seed?n=90&hours=${Math.max(hours,8)}`, {method:'POST'}); }
+  catch(e){}
+  $('btnSeed').disabled = false; load();
+});
+$('btnClear').addEventListener('click', async ()=>{
+  if(!confirm('Delete every scan labelled shift_id=DEMO? Measured scans are not touched.'))
+    return;
+  try{ await fetch(`${API}/api/demo/clear`, {method:'POST'}); }catch(e){}
+  load();
+});
+
+timer = setInterval(()=>{ if(autoRefresh && !document.hidden) load(); }, REFRESH_MS);
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && autoRefresh) load(); });
+load();
+</script>
+</body>
+</html>

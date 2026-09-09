@@ -1,0 +1,29 @@
+# SIH26118 - passive colorimetric H2S dosimeter wristband, software stack
+#
+# The engine and the demonstration server need only the first two lines. Everything below
+# them is optional, and that is a deliberate property rather than an accident of packaging:
+# this has to be startable on a refinery laptop with no wheel mirror, so `hse/serve_dev.py`
+# implements the same routes as `hse/api.py` on top of the standard library. If FastAPI is
+# unavailable, nothing is lost except the auto-generated OpenAPI page.
+#
+#     pip install -r requirements.txt          # full
+#     pip install numpy opencv-python-headless # enough to run everything below
+#
+# Verified against numpy 2.2.6 and OpenCV 5.0.0. The colorimetry is written against the CIE
+# formulae directly rather than a colour-science library, so there is no third dependency to
+# pin and the arithmetic is auditable line by line against the published equations.
+
+numpy>=1.24
+opencv-python-headless>=4.8      # use opencv-python instead if you want cli window support
+
+# ---- optional: the FastAPI adapter (hse/api.py) --------------------------------------------
+# Skip these and run `python3 -m hse.serve_dev` instead. Same endpoints, same service layer,
+# stdlib http.server underneath.
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9          # required by FastAPI to parse the scanner's multipart upload
+
+# ---- optional: PostGIS deployment ---------------------------------------------------------
+# For a real pilot. hse/schema_postgis.sql is the migration; the SQLite store mirrors it so
+# the application layer does not change shape when you move over.
+# psycopg[binary]>=3.1
