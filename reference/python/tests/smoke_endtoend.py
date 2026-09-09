@@ -137,10 +137,11 @@ def main():
     tmp = tempfile.mkdtemp(prefix="h2s-smoke-")
     db = os.path.join(tmp, "smoke.db")
     env = dict(os.environ, PYTHONPATH=ROOT)
+    backend_dir = os.path.join(os.path.dirname(os.path.dirname(ROOT)), "backend")
     proc = subprocess.Popen(
         [sys.executable, "-m", "hse.serve_dev", "--host", "127.0.0.1", "--port", str(PORT),
          "--db", db, "--images", os.path.join(tmp, "img")],
-        cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        cwd=backend_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
     try:
         # ---- wait for the port ------------------------------------------
