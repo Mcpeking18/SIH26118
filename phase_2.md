@@ -174,3 +174,11 @@ At the end of this step, STOP and show me:
 7. Exact files you intend to create/modify
 
 Wait for approval before implementing the first module.
+
+
+
+
+
+
+
+Create a simple polished demo UI for the Android app using the existing project structure. Put it under the ui package. Do not modify the Python reference implementation, CV pipeline, calibration logic, Gradle/OpenCV configuration, or backend. The UI should be standalone/mock-only for now. Add a home screen for ‘MRPL H₂S Dosimeter’ with a Scan Wristband button, View History button, and a sample dose/TWA/status card. Make sure the app launches directly into this screen and builds successfully.
