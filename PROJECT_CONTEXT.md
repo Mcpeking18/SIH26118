@@ -22,3 +22,10 @@
 - Full implementation of the Kotlin/OpenCV pipeline inside the Android app.
 - Real gaseous H2S calibration data integration.
 - Final wristband geometry dimensions.
+
+### Phase 2: Engine Migration (Ongoing)
+- **Module 1 (Geometry):** Migrated eference/python/engine/badge_spec.py to com.mrpl.wristband.config.WristbandSpec.kt.
+- **Verification:** Equivalent coordinate generation proven via WristbandSpecTest.kt (Tolerance: 1e-6). 
+- **Decisions:** Hardcoded D65-computed REFERENCE_LAB and PAD_STAGE_SRGB to eliminate unnecessary early dependency on colorimetry.py.
+- **Limitations:** Geometry is strictly preserved from the Python "golden reference." Dimensions are treated as provisional until physical wristbands are finalized.
+- **Next Module Target:** OpenCV ArUco detector / normalisation module.
