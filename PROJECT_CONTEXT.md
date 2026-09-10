@@ -29,3 +29,6 @@
 - **Decisions:** Hardcoded D65-computed REFERENCE_LAB and PAD_STAGE_SRGB to eliminate unnecessary early dependency on colorimetry.py.
 - **Limitations:** Geometry is strictly preserved from the Python "golden reference." Dimensions are treated as provisional until physical wristbands are finalized.
 - **Next Module Target:** OpenCV ArUco detector / normalisation module.
+- **Module 2 (Detection & Rectification):** Migrated eference/python/engine/detect.py to com.mrpl.wristband.cv.Detector.kt.
+- **Verification:** OpenCV 5.0.0 API (ArucoDetector) integrated cleanly. Instrumented test (DetectorTest.kt) written. Test compilation succeeded, but device execution pending Android environment setup (No connected devices!).
+- **Decisions:** Hardcoded the Python implementation's interpolation logic (INTER_AREA/INTER_LINEAR) and RMSE logic exactly as required. Dropped legacy OpenCV 4.6 compatibility shim as Android is exclusively OpenCV 5.0.0.
