@@ -5,7 +5,8 @@
         android:allowBackup="true"
         android:label="Wristband Dosimeter"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:icon="@mipmap/testapppic">
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
