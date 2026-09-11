@@ -1,4 +1,4 @@
-﻿package com.mrpl.wristband.color
+package com.mrpl.wristband.color
 
 import org.opencv.core.Core
 import org.opencv.core.CvType
@@ -6,7 +6,6 @@ import org.opencv.core.Mat
 import kotlin.math.*
 
 object Colorimetry {
-    // Rec.709 luminance weights, applied to LINEAR RGB
     val LUMA = doubleArrayOf(0.2126, 0.7152, 0.0722)
 
     val SRGB_TO_XYZ = arrayOf(
