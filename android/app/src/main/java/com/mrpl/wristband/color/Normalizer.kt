@@ -5,6 +5,7 @@ import org.opencv.core.CvType
 import org.opencv.core.Mat
 import kotlin.math.*
 import com.mrpl.wristband.config.WristbandSpec
+import com.mrpl.wristband.dosimetry.Dosimetry
 import com.mrpl.wristband.cv.BadgeSamples
 
 data class NormalizationResult(
@@ -44,24 +45,9 @@ data class NormalizationResult(
 
 object Normalizer {
 
-    val PAD_LOCUS_UNIT = doubleArrayOf(-0.99621391, 0.07134013, 0.0496833)
 
-    val PAD_STAGE_ANCHORS_LAB: Array<DoubleArray> by lazy {
-        Array(WristbandSpec.PAD_STAGE_SRGB.size) { i ->
-            val rgb = DoubleArray(3) { j -> WristbandSpec.PAD_STAGE_SRGB[i][j].toDouble() }
-            Colorimetry.xyzToLab(Colorimetry.linearRgbToXyz(Colorimetry.srgbToLinear(rgb)))
-        }
-    }
     
-    val UNEXPOSED_PAD_LAB: DoubleArray by lazy {
-        val rgb = DoubleArray(3) { j -> WristbandSpec.PAD_STAGE_SRGB[0][j].toDouble() }
-        Colorimetry.xyzToLab(Colorimetry.linearRgbToXyz(Colorimetry.srgbToLinear(rgb)))
-    }
     
-    val FULLY_REACTED_PAD_LAB: DoubleArray by lazy {
-        val rgb = DoubleArray(3) { j -> WristbandSpec.PAD_STAGE_SRGB[WristbandSpec.PAD_STAGE_SRGB.size-1][j].toDouble() }
-        Colorimetry.xyzToLab(Colorimetry.linearRgbToXyz(Colorimetry.srgbToLinear(rgb)))
-    }
 
     fun robustLstsq(A: Mat, L: Mat, minKeep: Int): Pair<Mat, Int> {
         val coef = Mat()
@@ -325,8 +311,8 @@ object Normalizer {
     }
 
     private fun padLocusLab(n: Int = 33): Array<DoubleArray> {
-        val a = UNEXPOSED_PAD_LAB
-        val b = FULLY_REACTED_PAD_LAB
+        val a = Dosimetry.UNEXPOSED_PAD_LAB
+        val b = Dosimetry.FULLY_REACTED_PAD_LAB
         return Array(n) { i ->
             val t = i.toDouble() / (n - 1)
             doubleArrayOf(a[0] + t*(b[0]-a[0]), a[1] + t*(b[1]-a[1]), a[2] + t*(b[2]-a[2]))
@@ -385,39 +371,8 @@ object Normalizer {
         return Pair(res, resL)
     }
 
-    private fun locusProjection(padLab: DoubleArray, baselineLab: DoubleArray): Double {
-        val d0 = padLab[0] - baselineLab[0]
-        val d1 = padLab[1] - baselineLab[1]
-        val d2 = padLab[2] - baselineLab[2]
-        return d0 * PAD_LOCUS_UNIT[0] + d1 * PAD_LOCUS_UNIT[1] + d2 * PAD_LOCUS_UNIT[2]
-    }
 
-    private fun locusLabForLightness(lStar: Double): DoubleArray {
-        val A = PAD_STAGE_ANCHORS_LAB
-        val L_asc = DoubleArray(A.size) { A[A.size - 1 - it][0] }
-        val cL = max(L_asc[0], min(lStar, L_asc[L_asc.size - 1]))
-        
-        var idx = 0
-        while (idx < L_asc.size - 1 && L_asc[idx+1] < cL) {
-            idx++
-        }
-        if (idx >= L_asc.size - 1) idx = L_asc.size - 2
-        val t = if (L_asc[idx+1] == L_asc[idx]) 0.0 else (cL - L_asc[idx]) / (L_asc[idx+1] - L_asc[idx])
-        
-        val a1 = A[A.size - 1 - idx][1]
-        val a2 = A[A.size - 1 - (idx+1)][1]
-        val b1 = A[A.size - 1 - idx][2]
-        val b2 = A[A.size - 1 - (idx+1)][2]
-        
-        return doubleArrayOf(cL, a1 + t*(a2-a1), b1 + t*(b2-b1))
-    }
 
-    private fun locusChromaResidual(padLab: DoubleArray): Double {
-        val expected = locusLabForLightness(padLab[0])
-        val da = padLab[1] - expected[1]
-        val db = padLab[2] - expected[2]
-        return hypot(da, db)
-    }
 
     fun normalizeBadge(
         samples: BadgeSamples,
@@ -714,8 +669,8 @@ object Normalizer {
                 out.warnings.add("only ${subs.size} of ${totalSubs} substrate patches usable; the opposite-pair cancellation of illumination gradients is lost, so the reading carries whatever ramp the flat field did not remove")
             }
         } else {
-            out.baselineLab = UNEXPOSED_PAD_LAB.clone()
-            out.baselineSource = "constant:UNEXPOSED_PAD_LAB"
+            out.baselineLab = Dosimetry.UNEXPOSED_PAD_LAB.clone()
+            out.baselineSource = "constant:Dosimetry.UNEXPOSED_PAD_LAB"
             if (baselineMode == "onbadge") {
                 out.reason = "the reference patches the reading is measured against are unusable, so the pad has nothing in this photograph to be compared with. Almost always blown-out highlights: move out of the direct glare, or step away from the sodium lamp and use the torch as the main light. Passing baseline_mode='constant' explicitly will read it anyway, but the result is not defensible as an exposure record."
                 return out
@@ -723,8 +678,8 @@ object Normalizer {
         }
 
         out.deltaLStar = out.baselineLab!![0] - out.padLab!![0]
-        out.locusProjection = locusProjection(out.padLab!!, out.baselineLab!!)
-        out.chromaResidual = locusChromaResidual(out.padLab!!)
+        out.locusProjection = Dosimetry.locusProjection(out.padLab!!, out.baselineLab!!)
+        out.chromaResidual = Dosimetry.locusChromaResidual(out.padLab!!)
         out.deltaE00 = Colorimetry.deltaECIEDE2000(out.baselineLab!!, out.padLab!!)
 
         if (out.deltaLStar.isNaN() || out.deltaLStar.isInfinite()) {
