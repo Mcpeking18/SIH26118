@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
     <application
         android:allowBackup="true"
         android:label="Wristband Dosimeter"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.Light.NoActionBar"
+        android:theme="@style/Theme.WristbandDosimeter"
         android:icon="@mipmap/testapppic">
         <activity
             android:name=".ui.MainActivity"
@@ -17,6 +19,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+            <activity android:name=".ui.DebugCameraActivity" android:screenOrientation="portrait" />
     </application>
 
 </manifest>

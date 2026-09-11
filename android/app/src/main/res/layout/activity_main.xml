@@ -148,11 +148,26 @@
         android:textStyle="bold"
         app:cornerRadius="12dp"
         app:backgroundTint="#2563EB"
+        app:layout_constraintBottom_toTopOf="@id/btnDebugCamera"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+        <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnDebugCamera"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_marginHorizontal="24dp"
+        android:layout_marginBottom="16dp"
+        android:text="[DEBUG] Test Pipeline"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:cornerRadius="12dp"
+        app:backgroundTint="#EF4444"
         app:layout_constraintBottom_toTopOf="@id/btnHistory"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
 
-    <com.google.android.material.button.MaterialButton
+<com.google.android.material.button.MaterialButton
         android:id="@+id/btnHistory"
         style="@style/Widget.MaterialComponents.Button.OutlinedButton"
         android:layout_width="match_parent"

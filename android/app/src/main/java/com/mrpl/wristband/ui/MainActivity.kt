@@ -1,5 +1,6 @@
 ﻿package com.mrpl.wristband.ui
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -11,6 +12,11 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        
+        val btnDebugCamera = findViewById<MaterialButton>(R.id.btnDebugCamera)
+        btnDebugCamera.setOnClickListener {
+            startActivity(Intent(this, DebugCameraActivity::class.java))
+        }
         val btnScan = findViewById<MaterialButton>(R.id.btnScan)
         val btnHistory = findViewById<MaterialButton>(R.id.btnHistory)
 
