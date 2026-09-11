@@ -21,7 +21,7 @@ class MainActivity : AppCompatActivity() {
         val btnHistory = findViewById<MaterialButton>(R.id.btnHistory)
 
         btnScan.setOnClickListener {
-            Toast.makeText(this, "Scan Wristband clicked", Toast.LENGTH_SHORT).show()
+            startActivity(Intent(this, DebugCameraActivity::class.java))
         }
 
         btnHistory.setOnClickListener {
