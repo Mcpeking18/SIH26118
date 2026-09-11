@@ -63,7 +63,6 @@ class ColorimetryTest {
 
         val M = Colorimetry.solveCcm(obs, ref, "root6", 1e-4)
 
-        // Compare with Python output
         val expected = arrayOf(
             doubleArrayOf(-0.2269966243182744, 2.1322401836989138, 1.8663368495267847),
             doubleArrayOf(-1.771203326270122, -2.5802435781059727, 0.0926849770854363),

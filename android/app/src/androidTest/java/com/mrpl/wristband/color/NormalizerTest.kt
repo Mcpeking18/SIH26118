@@ -40,7 +40,7 @@ class NormalizerTest {
         val A = Mat(10, 3, CvType.CV_64F)
         val L = Mat(10, 1, CvType.CV_64F)
         for (i in 0 until 10) {
-            A.put(i, 0, *aArray[i])
+            for(c in 0 until 3) A.put(i, c, aArray[i][c])
             L.put(i, 0, lArray[i])
         }
 
