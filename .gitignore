@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+out/*.db
+out/jscheck/
+android/.gradle/
+android/build/
+# Android Studio & SDK Exceptions
+.idea/
+*.iml
+local.properties
+android/opencv/
+android/.idea/
