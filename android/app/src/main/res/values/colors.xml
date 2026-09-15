@@ -1,5 +1,53 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="black">#FF000000</color>
+    <!-- Core Backgrounds & Surfaces -->
+    <color name="h2s_bg">#0A0E17</color>
+    <color name="h2s_surface">#111622</color>
+    <color name="h2s_card">#151D2A</color>
+    <color name="h2s_card_elevated">#1A2436</color>
+    <color name="h2s_card_stroke">#232E42</color>
+    <color name="h2s_card_stroke_active">#354664</color>
+    <color name="h2s_divider">#1E293B</color>
+    
+    <!-- Primary Accents -->
+    <color name="h2s_blue">#2563EB</color>
+    <color name="h2s_blue_dark">#1D4ED8</color>
+    <color name="h2s_blue_light">#3B82F6</color>
+    <color name="h2s_blue_glow">#332563EB</color>
+    <color name="h2s_blue_badge_bg">#14243D</color>
+    <color name="h2s_cyan">#06B6D4</color>
+    
+    <!-- Status Colors -->
+    <color name="h2s_green">#10B981</color>
+    <color name="h2s_green_bg">#0E2820</color>
+    <color name="h2s_green_stroke">#059669</color>
+    
+    <color name="h2s_yellow">#F59E0B</color>
+    <color name="h2s_yellow_bg">#291E0A</color>
+    <color name="h2s_yellow_stroke">#D97706</color>
+    
+    <color name="h2s_orange">#F97316</color>
+    <color name="h2s_orange_bg">#31190B</color>
+    <color name="h2s_orange_stroke">#EA580C</color>
+    
+    <color name="h2s_red">#EF4444</color>
+    <color name="h2s_red_bg">#301416</color>
+    <color name="h2s_red_stroke">#DC2626</color>
+    
+    <!-- Typography Colors -->
     <color name="white">#FFFFFFFF</color>
+    <color name="black">#FF000000</color>
+    <color name="h2s_text_white">#FFFFFF</color>
+    <color name="h2s_text_primary">#F8FAFC</color>
+    <color name="h2s_text_secondary">#94A3B8</color>
+    <color name="h2s_text_muted">#64748B</color>
+    <color name="h2s_text_dim">#475569</color>
+    
+    <!-- Navigation & Reticle -->
+    <color name="h2s_nav_bg">#0C1019</color>
+    <color name="h2s_nav_active">#3B82F6</color>
+    <color name="h2s_nav_inactive">#64748B</color>
+    <color name="h2s_reticle_corner">#3B82F6</color>
+    <color name="h2s_reticle_grid">#223049</color>
+    <color name="h2s_reticle_laser">#EF4444</color>
 </resources>

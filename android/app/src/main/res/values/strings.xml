@@ -1,3 +1,108 @@
 <resources>
-    <string name="app_name">Wristband Dosimeter</string>
+    <string name="app_name">H2S Guard</string>
+    <string name="app_subtitle">SAFETY PROTOCOL SYSTEM</string>
+    
+    <!-- Auth & Sign In -->
+    <string name="sign_in_title">H2S GUARD</string>
+    <string name="sign_in_subtitle">SAFETY PROTOCOL SYSTEM</string>
+    <string name="emp_id_label">EMPLOYEE IDENTIFICATION</string>
+    <string name="emp_id_hint">ID-000-000</string>
+    <string name="security_pin_label">SECURITY CREDENTIAL</string>
+    <string name="reset_pin">RESET PIN</string>
+    <string name="pin_hint">••••••••</string>
+    <string name="ack_safety_protocols">I ACKNOWLEDGE ALL REFINERY SAFETY PROTOCOLS AND AUTHORIZE DEVICE MONITORING.</string>
+    <string name="btn_sign_in">SIGN IN TO STATION</string>
+    <string name="auth_required">AUTHENTICATION REQUIRED</string>
+    <string name="training_hub_title">NEW DEPLOYMENT?</string>
+    <string name="training_hub_action">ACCESS TRAINING HUB</string>
+    <string name="compliance_footer">SYSTEM V2.4.1 BUILD 8B2 // REFINERY SAFETY STANDARDS COMPLIANCE</string>
+    
+    <!-- Device Pairing -->
+    <string name="system_init">SYSTEM INITIALIZATION</string>
+    <string name="device_pairing_title">DEVICE PAIRING</string>
+    <string name="device_pairing_desc">Synchronizing worker credentials and safety protocols with local sensor telemetry.</string>
+    <string name="device_model">MOD: H2S-PRO-V4</string>
+    <string name="device_batt">BATT: 98%</string>
+    <string name="device_signal">SIGNAL: STABLE</string>
+    <string name="verification_pipeline">VERIFICATION PIPELINE</string>
+    <string name="operator_identity">OPERATOR IDENTITY</string>
+    <string name="refinery_assignment">REFINERY ASSIGNMENT</string>
+    <string name="processing_unit">PROCESSING UNIT</string>
+    <string name="safety_zone">SAFETY ZONE</string>
+    <string name="wristband_id">WRISTBAND ID</string>
+    <string name="status_waiting">WAITING . . .</string>
+    <string name="status_verified">VERIFIED</string>
+    <string name="proximity_notice_title">PROXIMITY NOTICE</string>
+    <string name="proximity_notice_desc">Maintain 1m range. H2S monitoring active immediately upon pairing.</string>
+    <string name="btn_initialize_connection">INITIALIZE CONNECTION</string>
+    <string name="btn_manual_device_entry">Manual Device Entry</string>
+    
+    <!-- Scanner -->
+    <string name="scanner_stndby">STNDBY</string>
+    <string name="scanner_cam_meta">EXP: +2.4EV | ISO: 400</string>
+    <string name="scanner_align_cue">ALIGN TAG HERE</string>
+    <string name="operational_protocol_title">OPERATIONAL PROTOCOL</string>
+    <string name="operational_protocol_desc">Position sensor tag QR code within the highlighted boundaries. High-contrast lighting required for verification.</string>
+    <string name="scanner_library">LIBRARY</string>
+    <string name="scanner_initiate">INITIATE SCAN</string>
+    <string name="scanner_metric">METRIC</string>
+    <string name="engine_status">ENGINE V4.2.0</string>
+    <string name="engine_ready">READY</string>
+    <string name="enter_sensor_manually">ENTER SENSOR ID MANUALLY</string>
+    
+    <!-- Result -->
+    <string name="scan_complete">SCAN COMPLETE</string>
+    <string name="sensor_synchronized">SENSOR SYNCHRONIZED SUCCESSFULLY</string>
+    <string name="device_telemetry">DEVICE TELEMETRY</string>
+    <string name="tag_encrypted">ENCRYPTED</string>
+    <string name="sensor_unit_id_label">SENSOR UNIT ID</string>
+    <string name="calibration_valid">CALIBRATION\nVALID (18d Left)</string>
+    <string name="exposure_analysis">EXPOSURE ANALYSIS</string>
+    <string name="readout_12h">T-MINUS 12H READOUT</string>
+    <string name="peak_intensity">PEAK INTENSITY</string>
+    <string name="cumulative_concentration">CUMULATIVE CONCENTRATION</string>
+    <string name="live_waveform_analysis">LIVE WAVEFORM ANALYSIS</string>
+    <string name="last_cloud_sync">Last Cloud Sync</string>
+    <string name="system_protocol">System Protocol</string>
+    <string name="firmware_version">Firmware Version</string>
+    <string name="system_actions">SYSTEM ACTIONS</string>
+    <string name="action_go_dashboard">GO TO DASHBOARD</string>
+    <string name="action_go_dashboard_desc">return to main monitoring portal</string>
+    <string name="action_scan_new">SCAN NEW DEVICE</string>
+    <string name="action_scan_new_desc">reset and re-identify hardware</string>
+    <string name="action_view_history">VIEW FULL HISTORY</string>
+    <string name="action_view_history_desc">chronological exposure data logs</string>
+    <string name="result_security_node_footer">Scan result verified by TX-REF-04 Security Node. Automated compliance report submitted to EH&amp;S system.</string>
+    
+    <!-- History / Archive -->
+    <string name="compliance_logs">COMPLIANCE LOGS</string>
+    <string name="exposure_archive">EXPOSURE ARCHIVE</string>
+    <string name="search_hint">Search zones or IDs…</string>
+    <string name="trend_7day">7-DAY EXPOSURE TREND</string>
+    <string name="status_compliant">COMPLIANT</string>
+    
+    <!-- Zone Details -->
+    <string name="zone_details_title">UNIT HDS-04 DETAILS</string>
+    <string name="sector_header">REFINERY SECTOR 04</string>
+    <string name="sulfur_recovery_unit">SULFUR RECOVERY UNIT</string>
+    <string name="active_alert">ACTIVE ALERT</string>
+    <string name="status_warning">STATUS: WARNING</string>
+    <string name="alert_warning_desc">Elevated H2S concentrations detected at sensor HDS-04-B.</string>
+    <string name="gas_monitoring_ppm">GAS MONITORING (PPM)</string>
+    <string name="trend_24h">24-HOUR TREND</string>
+    <string name="active_personnel">ACTIVE PERSONNEL</string>
+    <string name="safety_protocols">SAFETY PROTOCOLS</string>
+    
+    <!-- Profile -->
+    <string name="assigned_equipment">ASSIGNED EQUIPMENT</string>
+    <string name="device_usage_metrics">DEVICE USAGE METRICS</string>
+    <string name="system_configuration">SYSTEM CONFIGURATION</string>
+    <string name="sign_out_system">SIGN OUT SYSTEM</string>
+    <string name="profile_footer">H2S GUARD SECURE TERMINAL\nBUILD v4.11.24_REL</string>
+    
+    <!-- Navigation Tabs -->
+    <string name="nav_home">Home</string>
+    <string name="nav_history">History</string>
+    <string name="nav_map">Map</string>
+    <string name="nav_profile">Profile</string>
 </resources>
