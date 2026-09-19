@@ -16,12 +16,7 @@ object MockDataProvider {
         e0 = 0.91,
         verdict = "WITHIN LIMITS",
         level = "LOW",
-        batteryPercent = 88,
-        calibrationDaysLeft = 18,
-        isEncrypted = true,
         lastCloudSync = "12 NOV 2024 - 14:22:04",
-        systemProtocol = "OSHA-H2S-v4.1.0",
-        firmwareVersion = "X-TREAD_2.8.4",
         isMock = true
     )
 

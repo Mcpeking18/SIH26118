@@ -30,12 +30,7 @@ data class ScanUiResult(
     val e0: Double = 0.91,
     val verdict: String = "WITHIN LIMITS",
     val level: String = "LOW",
-    val batteryPercent: Int = 88,
-    val calibrationDaysLeft: Int = 18,
-    val isEncrypted: Boolean = true,
     val lastCloudSync: String = "12 NOV 2024 - 14:22:04",
-    val systemProtocol: String = "OSHA-H2S-v4.1.0",
-    val firmwareVersion: String = "X-TREAD_2.8.4",
     val isMock: Boolean = true
 ) : Serializable
 

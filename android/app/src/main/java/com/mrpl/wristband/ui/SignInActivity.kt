@@ -2,6 +2,8 @@ package com.mrpl.wristband.ui
 
 import android.content.Intent
 import android.os.Bundle
+import org.opencv.android.OpenCVLoader
+import android.util.Log
 import android.text.InputType
 import android.widget.CheckBox
 import android.widget.EditText
@@ -18,7 +20,12 @@ class SignInActivity : AppCompatActivity() {
     private var isPasswordVisible = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+                super.onCreate(savedInstanceState)
+        if (!OpenCVLoader.initDebug()) {
+            Log.e("OpenCV", "Unable to load OpenCV!")
+        } else {
+            Log.d("OpenCV", "OpenCV loaded successfully!")
+        }
         setContentView(R.layout.activity_sign_in)
 
         val etEmpId = findViewById<EditText>(R.id.etEmpId)

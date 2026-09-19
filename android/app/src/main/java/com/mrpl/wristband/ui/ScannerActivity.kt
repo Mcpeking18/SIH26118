@@ -8,6 +8,8 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Bundle
+import org.opencv.android.OpenCVLoader
+import android.util.Log
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
@@ -52,7 +54,12 @@ class ScannerActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+                super.onCreate(savedInstanceState)
+        if (!OpenCVLoader.initDebug()) {
+            Log.e("OpenCV", "Unable to load OpenCV!")
+        } else {
+            Log.d("OpenCV", "OpenCV loaded successfully!")
+        }
         setContentView(R.layout.activity_scanner)
 
         ivPreview = findViewById(R.id.ivCameraPreview)

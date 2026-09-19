@@ -17,25 +17,27 @@
     <string name="training_hub_action">ACCESS TRAINING HUB</string>
     <string name="compliance_footer">SYSTEM V2.4.1 BUILD 8B2 // REFINERY SAFETY STANDARDS COMPLIANCE</string>
     
-    <!-- Device Pairing -->
-    <string name="system_init">SYSTEM INITIALIZATION</string>
-    <string name="device_pairing_title">DEVICE PAIRING</string>
-    <string name="device_pairing_desc">Synchronizing worker credentials and safety protocols with local sensor telemetry.</string>
-    <string name="device_model">MOD: H2S-PRO-V4</string>
-    <string name="device_batt">BATT: 98%</string>
-    <string name="device_signal">SIGNAL: STABLE</string>
-    <string name="verification_pipeline">VERIFICATION PIPELINE</string>
-    <string name="operator_identity">OPERATOR IDENTITY</string>
-    <string name="refinery_assignment">REFINERY ASSIGNMENT</string>
-    <string name="processing_unit">PROCESSING UNIT</string>
-    <string name="safety_zone">SAFETY ZONE</string>
-    <string name="wristband_id">WRISTBAND ID</string>
-    <string name="status_waiting">WAITING . . .</string>
-    <string name="status_verified">VERIFIED</string>
-    <string name="proximity_notice_title">PROXIMITY NOTICE</string>
-    <string name="proximity_notice_desc">Maintain 1m range. H2S monitoring active immediately upon pairing.</string>
-    <string name="btn_initialize_connection">INITIALIZE CONNECTION</string>
+    <!-- Chemical Strip Scan -->
+    <string name="system_init">CHEMICAL STRIP SCAN</string>
+    <string name="chemical_strip_title">PLACE WRISTBAND</string>
+    <string name="chemical_strip_desc">Position wristband on H2S source for analysis</string>
+    <string name="device_model">-- --</string>
+    <string name="device_batt">-- --</string>
+    <string name="device_signal">-- --</string>
+    <string name="verification_pipeline">CHEMICAL STRIP SCAN</string>
+    <string name="operator_identity">WRISTBAND PLACEMENT</string>
+    <string name="refinery_assignment">POSITION ON SOURCE</string>
+    <string name="processing_unit">ANALYZE READING</string>
+    <string name="safety_zone">RESULT DISPLAYED</string>
+    <string name="wristband_id">CHEMICAL STRIP ID</string>
+    <string name="status_waiting">READY</string>
+    <string name="status_verified">ANALYZED</string>
+    <string name="proximity_notice_title">LIGHTING NOTICE</string>
+    <string name="proximity_notice_desc">Ensure good illumination for accurate chemical reading</string>
+    <string name="btn_initialize_connection">SCAN WRISTBAND</string>
     <string name="btn_manual_device_entry">Manual Device Entry</string>
+    <string name="chemical_strip_wristband">Chemical Strip Wristband</string>
+    <string name="analyze_wristband">ANALYZE WRISTBAND</string>
     
     <!-- Scanner -->
     <string name="scanner_stndby">STNDBY</string>

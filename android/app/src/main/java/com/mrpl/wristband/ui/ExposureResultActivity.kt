@@ -25,7 +25,7 @@ class ExposureResultActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.tvResultPeak).text = String.format("%.2f PPM", result.peakIntensityPpm)
         findViewById<TextView>(R.id.tvResultCumulative).text = String.format("%.2f PPM", result.cumulativeConcentrationPpm)
         findViewById<TextView>(R.id.tvResultVerdict).text = result.verdict
-        findViewById<TextView>(R.id.tvResultBattery).text = "BATTERY\n${result.batteryPercent}%"
+        
         findViewById<TextView>(R.id.tvLastSync).text = result.timestamp
 
         val tvPeakLevel = findViewById<TextView>(R.id.tvResultPeakLevel)
@@ -40,9 +40,8 @@ class ExposureResultActivity : AppCompatActivity() {
         tvPeakLevel.setTextColor(levelColor)
         findViewById<TextView>(R.id.tvResultVerdict).setTextColor(levelColor)
 
-        val calibText = "CALIBRATION\nVALID (${result.calibrationDaysLeft}d Left)"
-        findViewById<TextView>(R.id.tvResultCalibration).text = calibText
-
+        val calibText = "CALIBRATION\\nPENDING LAB"
+        
         // Seed chart with mock waveform data
         val chart = findViewById<TrendLineChartView>(R.id.chartWaveform)
         chart.setData(

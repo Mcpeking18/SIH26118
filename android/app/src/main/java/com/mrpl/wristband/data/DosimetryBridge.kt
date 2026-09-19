@@ -3,6 +3,8 @@ package com.mrpl.wristband.data
 import android.graphics.Bitmap
 import com.mrpl.wristband.cv.Detector
 import com.mrpl.wristband.cv.Sampler
+import com.mrpl.wristband.color.Normalizer
+import com.mrpl.wristband.dosimetry.Dosimetry
 import org.opencv.android.Utils
 import org.opencv.core.Mat
 import java.text.SimpleDateFormat
@@ -43,28 +45,42 @@ object DosimetryBridge {
             val detection = detector.rectify(mat)
 
             if (detection.ok && detection.warped != null) {
-                // Sampler is an object – call sampleBadge() directly
-                val _badgeSamples = Sampler.sampleBadge(detection.warped)
-                // Integration point: Compute actual delta L* from badgeSamples.pad
-                // and evaluate against calibration curve. Physical chamber calibration
-                // is pending Phase 3; report a verified detection with realistic values.
+                val badgeSamples = Sampler.sampleBadge(detection.warped)
+                
+                // Normalizer
+                                val normalizedResult = Normalizer.normalizeBadge(badgeSamples)
+                if (normalizedResult.padLab == null) {
+                    return MockDataProvider.defaultScanResult.copy(
+                        wristbandId = wristbandIdHint,
+                        timestamp = now,
+                        verdict = "SCAN FAILED: Color Normalization Failed",
+                        isMock = true
+                    )
+                }
+
+                // Dosimetry
+                val deltaL = normalizedResult.deltaLStar
+                val dResult = Dosimetry.assessScan(
+                    observable = deltaL,
+                    shiftHours = 8.0,
+                    deltaE00 = normalizedResult.deltaE00,
+                    deltaLStar = normalizedResult.deltaLStar
+                )
+
                 return ScanUiResult(
                     wristbandId = wristbandIdHint,
                     refinery = "ABC Refinery",
                     unit = "Hydrodesulfurization Unit",
                     zone = "HDS-04",
                     timestamp = now,
-                    peakIntensityPpm = 1.42,
-                    cumulativeConcentrationPpm = 0.34,
-                    dosePpmHr = 5.8,
-                    twaPpm = 0.72,
-                    darkeningPercent = 34.0,
-                    e0 = 0.91,
-                    verdict = "WITHIN LIMITS",
-                    level = "LOW",
-                    batteryPercent = 88,
-                    calibrationDaysLeft = 18,
-                    isEncrypted = true,
+                    peakIntensityPpm = dResult.dosePpmHr,
+                    cumulativeConcentrationPpm = dResult.dosePpmHr,
+                    dosePpmHr = dResult.dosePpmHr,
+                    twaPpm = dResult.twaPpm,
+                    darkeningPercent = deltaL * 100,
+                    e0 = dResult.deltaE00,
+                    verdict = dResult.verdict.name,
+                    level = if(dResult.verdict.name == "SAFE" || dResult.verdict.name == "NORMAL") "LOW" else "CRITICAL",
                     lastCloudSync = now,
                     isMock = false
                 )

@@ -143,13 +143,7 @@
                 android:orientation="horizontal"
                 android:padding="16dp">
 
-                <ImageView
-                    android:layout_width="60dp"
-                    android:layout_height="60dp"
-                    android:background="@drawable/bg_card_elevated_rounded"
-                    android:padding="8dp"
-                    android:src="@drawable/ic_wristband_watch"
-                    app:tint="@color/h2s_yellow" />
+                
 
                 <LinearLayout
                     android:layout_width="match_parent"
