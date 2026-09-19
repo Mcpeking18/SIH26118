@@ -1,173 +1,111 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F4F7FB"
-    tools:context=".ui.MainActivity">
+    android:background="@color/h2s_bg">
 
-    <TextView
-        android:id="@+id/titleText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="48dp"
-        android:text="MRPL H₂S Dosimeter"
-        android:textColor="#1F2937"
-        android:textSize="28sp"
-        android:textStyle="bold"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
-    <TextView
-        android:id="@+id/subtitleText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="Passive Colorimetric Reader"
-        android:textColor="#6B7280"
-        android:textSize="16sp"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/titleText" />
-
-    <com.google.android.material.card.MaterialCardView
-        android:id="@+id/statusCard"
+    <!-- Top App Bar -->
+    <LinearLayout
+        android:id="@+id/topAppBar"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginHorizontal="24dp"
-        android:layout_marginTop="40dp"
-        app:cardBackgroundColor="@android:color/white"
-        app:cardCornerRadius="16dp"
-        app:cardElevation="8dp"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/subtitleText">
+        android:layout_height="56dp"
+        android:background="@color/h2s_surface"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@drawable/ic_shield_h2s" />
 
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="24dp"
-            android:gravity="center">
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
 
             <TextView
+                android:id="@+id/tvCurrentTabTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Current Dose Estimate"
-                android:textColor="#6B7280"
-                android:textSize="14sp"
-                android:textAllCaps="true"
+                android:letterSpacing="0.04"
+                android:text="@string/app_name"
+                android:textColor="@color/h2s_text_white"
+                android:textSize="16sp"
                 android:textStyle="bold" />
 
             <TextView
+                android:id="@+id/tvCurrentTabSub"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="5.2"
-                android:textColor="#10B981"
-                android:textSize="56sp"
+                android:letterSpacing="0.04"
+                android:text="@string/app_subtitle"
+                android:textColor="@color/h2s_blue_light"
+                android:textSize="9sp"
                 android:textStyle="bold" />
+        </LinearLayout>
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="ppm·hr"
-                android:textColor="#9CA3AF"
-                android:textSize="18sp"
-                android:layout_marginTop="-8dp"/>
+        <!-- Scan FAB button in Top Bar -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnTopBarScan"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:backgroundTint="@color/h2s_blue"
+            android:drawableStart="@drawable/ic_scan_camera"
+            android:drawablePadding="4dp"
+            android:letterSpacing="0.06"
+            android:paddingHorizontal="12dp"
+            android:text="SCAN"
+            android:textColor="@color/white"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            app:cornerRadius="8dp" />
+
+        <!-- Operator Avatar -->
+        <FrameLayout
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="12dp">
+
+            <ImageView
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_gravity="center"
+                android:background="@drawable/bg_card_elevated_rounded"
+                android:padding="6dp"
+                android:src="@drawable/ic_person"
+                app:tint="@color/h2s_blue_light" />
 
             <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:layout_marginVertical="16dp"
-                android:background="#E5E7EB" />
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:layout_gravity="bottom|end"
+                android:background="@drawable/bg_badge_green" />
+        </FrameLayout>
+    </LinearLayout>
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:weightSum="2">
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical"
-                    android:gravity="center">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="8h TWA"
-                        android:textColor="#6B7280"
-                        android:textSize="12sp" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="0.65 ppm"
-                        android:textColor="#374151"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical"
-                    android:gravity="center">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Status"
-                        android:textColor="#6B7280"
-                        android:textSize="12sp" />
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Safe"
-                        android:textColor="#10B981"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-                </LinearLayout>
-
-            </LinearLayout>
-
-        </LinearLayout>
-    </com.google.android.material.card.MaterialCardView>
-
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnScan"
+    <!-- Fragment Container -->
+    <FrameLayout
+        android:id="@+id/fragmentContainer"
         android:layout_width="match_parent"
-        android:layout_height="60dp"
-        android:layout_marginHorizontal="24dp"
-        android:layout_marginBottom="16dp"
-        android:text="Scan Wristband"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        app:cornerRadius="12dp"
-        app:backgroundTint="#2563EB"
-        app:layout_constraintBottom_toTopOf="@id/btnHistory"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toTopOf="@id/bottomNavigation"
+        app:layout_constraintTop_toBottomOf="@id/topAppBar" />
 
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnHistory"
-        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+    <!-- Bottom Navigation -->
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottomNavigation"
         android:layout_width="match_parent"
-        android:layout_height="60dp"
-        android:layout_marginHorizontal="24dp"
-        android:layout_marginBottom="40dp"
-        android:text="View History"
-        android:textSize="18sp"
-        android:textColor="#2563EB"
-        android:textStyle="bold"
-        app:cornerRadius="12dp"
-        app:strokeColor="#2563EB"
-        app:strokeWidth="2dp"
+        android:layout_height="wrap_content"
+        android:background="@color/h2s_nav_bg"
+        app:itemIconTint="@color/bottom_nav_color_selector"
+        app:itemRippleColor="@color/h2s_blue_glow"
+        app:itemTextColor="@color/bottom_nav_color_selector"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
+        app:menu="@menu/bottom_nav_menu" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

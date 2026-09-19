@@ -1,0 +1,313 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/h2s_bg"
+    android:fillViewport="true">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="24dp"
+        android:paddingVertical="36dp">
+
+        <!-- Shield Brand Icon -->
+        <ImageView
+            android:id="@+id/ivShieldBrand"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:layout_marginTop="28dp"
+            android:src="@drawable/ic_shield_h2s"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- Title -->
+        <TextView
+            android:id="@+id/tvAppTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:letterSpacing="0.08"
+            android:text="@string/sign_in_title"
+            android:textColor="@color/h2s_text_white"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/ivShieldBrand" />
+
+        <!-- Subtitle with lines -->
+        <LinearLayout
+            android:id="@+id/layoutSubtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvAppTitle">
+
+            <View
+                android:layout_width="24dp"
+                android:layout_height="1dp"
+                android:background="@color/h2s_blue_light" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="10dp"
+                android:letterSpacing="0.12"
+                android:text="@string/sign_in_subtitle"
+                android:textColor="@color/h2s_blue_light"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <View
+                android:layout_width="24dp"
+                android:layout_height="1dp"
+                android:background="@color/h2s_blue_light" />
+        </LinearLayout>
+
+        <!-- Employee ID Section -->
+        <TextView
+            android:id="@+id/tvEmpIdLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="36dp"
+            android:letterSpacing="0.06"
+            android:text="@string/emp_id_label"
+            android:textColor="@color/h2s_text_secondary"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/layoutSubtitle" />
+
+        <LinearLayout
+            android:id="@+id/layoutEmpId"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_input_field"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="14dp"
+            app:layout_constraintTop_toBottomOf="@id/tvEmpIdLabel">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_person"
+                app:tint="@color/h2s_text_muted" />
+
+            <EditText
+                android:id="@+id/etEmpId"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_marginStart="12dp"
+                android:background="@null"
+                android:hint="@string/emp_id_hint"
+                android:inputType="textCapCharacters"
+                android:text="EMP-9924-X"
+                android:textColor="@color/h2s_text_white"
+                android:textColorHint="@color/h2s_text_muted"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- Security Credential Section -->
+        <TextView
+            android:id="@+id/tvPinLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:letterSpacing="0.06"
+            android:text="@string/security_pin_label"
+            android:textColor="@color/h2s_text_secondary"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/layoutEmpId" />
+
+        <TextView
+            android:id="@+id/tvResetPin"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:letterSpacing="0.06"
+            android:text="@string/reset_pin"
+            android:textColor="@color/h2s_blue_light"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            app:layout_constraintBaseline_toBaselineOf="@id/tvPinLabel"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <LinearLayout
+            android:id="@+id/layoutPin"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_input_field"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="14dp"
+            app:layout_constraintTop_toBottomOf="@id/tvPinLabel">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_lock"
+                app:tint="@color/h2s_text_muted" />
+
+            <EditText
+                android:id="@+id/etPin"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:background="@null"
+                android:hint="@string/pin_hint"
+                android:inputType="textPassword"
+                android:text="123456"
+                android:textColor="@color/h2s_text_white"
+                android:textColorHint="@color/h2s_text_muted"
+                android:textSize="14sp" />
+
+            <ImageView
+                android:id="@+id/ivTogglePassword"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_visibility"
+                app:tint="@color/h2s_text_muted" />
+        </LinearLayout>
+
+        <!-- Compliance Checkbox -->
+        <LinearLayout
+            android:id="@+id/layoutAcknowledge"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            app:layout_constraintTop_toBottomOf="@id/layoutPin">
+
+            <CheckBox
+                android:id="@+id/cbAcknowledge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:buttonTint="@color/h2s_blue_light"
+                android:checked="true" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:letterSpacing="0.04"
+                android:lineSpacingExtra="3dp"
+                android:text="@string/ack_safety_protocols"
+                android:textColor="@color/h2s_text_secondary"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Sign In Button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSignIn"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="28dp"
+            android:backgroundTint="@color/h2s_blue"
+            android:letterSpacing="0.08"
+            android:text="SIGN IN TO STATION  ➔"
+            android:textAllCaps="true"
+            android:textColor="@color/h2s_text_white"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            app:cornerRadius="10dp"
+            app:layout_constraintTop_toBottomOf="@id/layoutAcknowledge" />
+
+        <TextView
+            android:id="@+id/tvAuthRequired"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:letterSpacing="0.12"
+            android:text="@string/auth_required"
+            android:textColor="@color/h2s_text_dim"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/btnSignIn" />
+
+        <!-- Training Hub Card -->
+        <LinearLayout
+            android:id="@+id/layoutTrainingHub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="40dp"
+            android:background="@drawable/bg_card_rounded"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="16dp"
+            app:layout_constraintTop_toBottomOf="@id/tvAuthRequired">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_shield_h2s"
+                app:tint="@color/h2s_blue_light" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="14dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:letterSpacing="0.06"
+                    android:text="@string/training_hub_title"
+                    android:textColor="@color/h2s_text_muted"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:letterSpacing="0.04"
+                    android:text="@string/training_hub_action"
+                    android:textColor="@color/h2s_text_white"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_arrow_forward"
+                app:tint="@color/h2s_text_muted" />
+        </LinearLayout>
+
+        <!-- Compliance Footer -->
+        <TextView
+            android:id="@+id/tvComplianceFooter"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="12dp"
+            android:gravity="center"
+            android:letterSpacing="0.04"
+            android:lineSpacingExtra="2dp"
+            android:text="@string/compliance_footer"
+            android:textColor="@color/h2s_text_dim"
+            android:textSize="10sp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/layoutTrainingHub" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</ScrollView>

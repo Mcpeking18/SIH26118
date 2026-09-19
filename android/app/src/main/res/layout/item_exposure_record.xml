@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginVertical="6dp"
+    android:background="@drawable/bg_card_rounded"
+    android:orientation="horizontal"
+    android:padding="14dp">
+
+    <!-- Status Color Strip on left -->
+    <View
+        android:id="@+id/viewSeverityStrip"
+        android:layout_width="4dp"
+        android:layout_height="match_parent"
+        android:background="@color/h2s_green"
+        android:layout_marginEnd="14dp"/>
+
+    <!-- Main Content -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tvRecordTimestamp"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="monospace"
+                android:text="2024-05-22 14:30"
+                android:textColor="@color/h2s_text_muted"
+                android:textSize="10sp" />
+
+            <TextView
+                android:id="@+id/tvRecordStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_badge_red"
+                android:letterSpacing="0.04"
+                android:text="EVACUATION"
+                android:textColor="@color/h2s_red"
+                android:textSize="9.5sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvRecordLocation"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:letterSpacing="0.04"
+            android:text="SULFUR RECOVERY"
+            android:textColor="@color/h2s_text_white"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:letterSpacing="0.04"
+                android:text="PEAK: "
+                android:textColor="@color/h2s_text_muted"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/tvRecordPeak"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:letterSpacing="0.04"
+                android:text="14.2 PPM"
+                android:textColor="@color/h2s_red"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="DUR: "
+                android:textColor="@color/h2s_text_muted"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/tvRecordDuration"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="12m"
+                android:textColor="@color/h2s_text_secondary"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <ImageView
+        android:layout_width="18dp"
+        android:layout_height="18dp"
+        android:layout_gravity="center_vertical"
+        android:layout_marginStart="8dp"
+        android:src="@drawable/ic_arrow_forward"
+        app:tint="@color/h2s_text_dim" />
+</LinearLayout>

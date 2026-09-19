@@ -1,9 +1,18 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
-    <style name="Base.Theme.WristbandDosimeter" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your light theme here. -->
-        <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
+    <style name="Theme.WristbandDosimeter" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Primary brand color. -->
+        <item name="colorPrimary">@color/h2s_blue</item>
+        <item name="colorPrimaryVariant">@color/h2s_blue_dark</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <!-- Secondary brand color. -->
+        <item name="colorSecondary">@color/h2s_blue_light</item>
+        <item name="colorSecondaryVariant">@color/h2s_blue</item>
+        <item name="colorOnSecondary">@color/white</item>
+        <!-- Background and Bars -->
+        <item name="android:statusBarColor">@color/h2s_bg</item>
+        <item name="android:navigationBarColor">@color/h2s_nav_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowBackground">@color/h2s_bg</item>
     </style>
-
-    <style name="Theme.WristbandDosimeter" parent="Base.Theme.WristbandDosimeter" />
 </resources>
