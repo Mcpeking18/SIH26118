@@ -34,7 +34,7 @@ class SignInActivity : AppCompatActivity() {
         val cbAcknowledge = findViewById<CheckBox>(R.id.cbAcknowledge)
         val btnSignIn = findViewById<MaterialButton>(R.id.btnSignIn)
         val tvResetPin = findViewById<TextView>(R.id.tvResetPin)
-        val layoutTrainingHub = findViewById<LinearLayout>(R.id.layoutTrainingHub)
+//        val layoutTrainingHub = findViewById<LinearLayout>(R.id.layoutTrainingHub)
 
         ivTogglePassword.setOnClickListener {
             isPasswordVisible = !isPasswordVisible
@@ -52,9 +52,9 @@ class SignInActivity : AppCompatActivity() {
             Toast.makeText(this, "Security PIN reset requested through supervisor node.", Toast.LENGTH_SHORT).show()
         }
 
-        layoutTrainingHub.setOnClickListener {
-            Toast.makeText(this, "Accessing Refinery Safety & Sensor Training Module...", Toast.LENGTH_SHORT).show()
-        }
+//        layoutTrainingHub.setOnClickListener {
+//            Toast.makeText(this, "Accessing Refinery Safety & Sensor Training Module...", Toast.LENGTH_SHORT).show()
+//        }
 
         btnSignIn.setOnClickListener {
             if (!cbAcknowledge.isChecked) {

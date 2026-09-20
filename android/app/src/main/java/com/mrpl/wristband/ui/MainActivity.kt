@@ -28,13 +28,13 @@ class MainActivity : AppCompatActivity() {
 
         bottomNav = findViewById(R.id.bottomNavigation)
 
-        val btnScan = findViewById<MaterialButton>(R.id.btnTopBarScan)
+//        val btnScan = findViewById<MaterialButton>(R.id.btnTopBarScan)
         val tvTitle = findViewById<TextView>(R.id.tvCurrentTabTitle)
         val tvSub = findViewById<TextView>(R.id.tvCurrentTabSub)
 
-        btnScan.setOnClickListener {
-            startActivity(Intent(this, ScannerActivity::class.java))
-        }
+//        btnScan.setOnClickListener {
+//            startActivity(Intent(this, ScannerActivity::class.java))
+//        }
 
         // Handle intent extras (e.g. from ExposureResultActivity)
         val openTab = intent.getStringExtra("OPEN_TAB")

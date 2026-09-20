@@ -54,6 +54,8 @@ class Detector(private val spec: WristbandSpec = WristbandSpec()) {
         val gray = Mat()
         if (image.channels() == 3) {
             Imgproc.cvtColor(image, gray, Imgproc.COLOR_BGR2GRAY)
+        } else if (image.channels() == 4) {
+            Imgproc.cvtColor(image, gray, Imgproc.COLOR_BGRA2GRAY)
         } else {
             image.copyTo(gray)
         }

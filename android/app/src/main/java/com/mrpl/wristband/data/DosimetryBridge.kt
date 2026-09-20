@@ -7,6 +7,7 @@ import com.mrpl.wristband.color.Normalizer
 import com.mrpl.wristband.dosimetry.Dosimetry
 import org.opencv.android.Utils
 import org.opencv.core.Mat
+import org.opencv.imgproc.Imgproc
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -39,8 +40,11 @@ object DosimetryBridge {
         }
 
         try {
+            val rgbaMat = Mat()
+            Utils.bitmapToMat(bitmap, rgbaMat)
             val mat = Mat()
-            Utils.bitmapToMat(bitmap, mat)
+            org.opencv.imgproc.Imgproc.cvtColor(rgbaMat, mat, org.opencv.imgproc.Imgproc.COLOR_RGBA2BGR)
+            rgbaMat.release()
             // Detector.rectify() is the correct API entry point (not detect())
             val detection = detector.rectify(mat)
 
@@ -50,11 +54,12 @@ object DosimetryBridge {
                 // Normalizer
                                 val normalizedResult = Normalizer.normalizeBadge(badgeSamples)
                 if (normalizedResult.padLab == null) {
-                    return MockDataProvider.defaultScanResult.copy(
+                    return ScanUiResult(
                         wristbandId = wristbandIdHint,
                         timestamp = now,
-                        verdict = "SCAN FAILED: Color Normalization Failed",
-                        isMock = true
+                        isMock = false,
+                        scanState = ScanState.POOR_IMAGE_QUALITY,
+                        errorMessage = "Color normalization failed (Glare/Shadow)"
                     )
                 }
 
@@ -90,10 +95,12 @@ object DosimetryBridge {
         }
 
         // Fallback demo result for testing and simulation
-        return MockDataProvider.defaultScanResult.copy(
+        return ScanUiResult(
             wristbandId = wristbandIdHint,
             timestamp = now,
-            isMock = true
+            isMock = false,
+            scanState = ScanState.PROCESSING_ERROR,
+            errorMessage = "Invalid Image or Lighting"
         )
     }
 

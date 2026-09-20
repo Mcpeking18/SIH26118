@@ -6,8 +6,10 @@ import android.os.Bundle
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AlertDialog
 import com.mrpl.wristband.R
 import com.mrpl.wristband.data.ScanUiResult
+import com.mrpl.wristband.data.ScanState
 import com.mrpl.wristband.ui.view.TrendLineChartView
 
 class ExposureResultActivity : AppCompatActivity() {
@@ -19,6 +21,20 @@ class ExposureResultActivity : AppCompatActivity() {
         @Suppress("DEPRECATION")
         val result = intent.getSerializableExtra("SCAN_RESULT") as? ScanUiResult
             ?: return
+
+        if (result.scanState != ScanState.SUCCESS) {
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Scan Failed")
+                .setMessage(result.errorMessage ?: "Unknown error during scan.")
+                .setCancelable(false)
+                .setPositiveButton("Try Again") { _, _ ->
+                    val intent = Intent(this, MainActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    startActivity(intent)
+                    finish()
+                }
+                .show()
+        }
 
         // Bind data to views
         findViewById<TextView>(R.id.tvResultSensorId).text = result.wristbandId

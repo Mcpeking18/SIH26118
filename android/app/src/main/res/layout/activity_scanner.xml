@@ -72,8 +72,8 @@
         app:layout_constraintTop_toBottomOf="@id/scannerTopBar">
 
         <!-- Optional image view for uploaded/preview image -->
-        <ImageView
-            android:id="@+id/ivCameraPreview"
+        <androidx.camera.view.PreviewView
+            android:id="@+id/viewFinder"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:scaleType="centerCrop" />

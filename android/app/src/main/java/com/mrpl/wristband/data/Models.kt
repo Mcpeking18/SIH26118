@@ -16,6 +16,15 @@ enum class ZoneStatus {
     CRITICAL
 }
 
+enum class ScanState {
+    SUCCESS,
+    BADGE_NOT_DETECTED,
+    POOR_IMAGE_QUALITY,
+    INVALID_GEOMETRY,
+    PROCESSING_ERROR,
+    CALIBRATION_UNAVAILABLE
+}
+
 data class ScanUiResult(
     val wristbandId: String = "H2S-G4-9982",
     val refinery: String = "ABC Refinery",
@@ -31,7 +40,9 @@ data class ScanUiResult(
     val verdict: String = "WITHIN LIMITS",
     val level: String = "LOW",
     val lastCloudSync: String = "12 NOV 2024 - 14:22:04",
-    val isMock: Boolean = true
+    val isMock: Boolean = true,
+    val scanState: ScanState = ScanState.SUCCESS,
+    val errorMessage: String? = null
 ) : Serializable
 
 data class ExposureRecord(

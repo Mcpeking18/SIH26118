@@ -21,13 +21,13 @@ class ProfileFragment : Fragment() {
         val root = inflater.inflate(R.layout.fragment_profile, container, false)
 
         val btnSignOut = root.findViewById<MaterialButton>(R.id.btnSignOut)
-        val rowDeviceSettings = root.findViewById<LinearLayout>(R.id.rowDeviceSettings)
+//        val rowDeviceSettings = root.findViewById<LinearLayout>(R.id.rowDeviceSettings)
         val rowAlertThresholds = root.findViewById<LinearLayout>(R.id.rowAlertThresholds)
         val rowCalibration = root.findViewById<LinearLayout>(R.id.rowCalibration)
 
-        rowDeviceSettings.setOnClickListener {
-            Toast.makeText(requireContext(), "Device Settings (Coming in Phase 3)", Toast.LENGTH_SHORT).show()
-        }
+//        rowDeviceSettings.setOnClickListener {
+//            Toast.makeText(requireContext(), "Device Settings (Coming in Phase 3)", Toast.LENGTH_SHORT).show()
+//        }
 
         rowAlertThresholds.setOnClickListener {
             Toast.makeText(requireContext(), "Alert Thresholds: OSHA TWA 1ppm / Ceiling 20ppm / STEL 5ppm", Toast.LENGTH_SHORT).show()
