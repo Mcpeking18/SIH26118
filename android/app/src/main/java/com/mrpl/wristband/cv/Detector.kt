@@ -1,7 +1,7 @@
 package com.mrpl.wristband.cv
 
 import com.mrpl.wristband.config.WristbandSpec
-import org.opencv.geometry.Geometry
+import org.opencv.calib3d.Calib3d
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
@@ -109,7 +109,7 @@ class Detector(private val spec: WristbandSpec = WristbandSpec()) {
         val srcMat = MatOfPoint2f(*srcPoints.toTypedArray())
         val dstMat = MatOfPoint2f(*dstPoints.toTypedArray())
 
-        val H = Geometry.findHomography(srcMat, dstMat, 0)
+        val H = Calib3d.findHomography(srcMat, dstMat, 0)
         if (H.empty()) return Pair(null, Double.NaN)
 
         val proj = MatOfPoint2f()
