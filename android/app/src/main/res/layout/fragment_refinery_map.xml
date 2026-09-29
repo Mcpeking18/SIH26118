@@ -49,7 +49,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
                     android:letterSpacing="0.04"
-                    android:text="ABC Refinery — Live Map"
+                    android:text="MRPL — Live Map"
                     android:textColor="@color/h2s_text_white"
                     android:textSize="17sp"
                     android:textStyle="bold" />
