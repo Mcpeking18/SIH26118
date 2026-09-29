@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_card_elevated_rounded"
+    android:gravity="center_horizontal"
+    android:orientation="vertical"
+    android:padding="28dp">
+
+    <ProgressBar
+        android:id="@+id/pbProcessing"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:indeterminateTint="@color/h2s_blue_light" />
+
+    <TextView
+        android:id="@+id/tvProcessingTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:letterSpacing="0.08"
+        android:text="ANALYZING DOSIMETER"
+        android:textColor="@color/h2s_text_white"
+        android:textSize="15sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/tvProcessingStep"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:fontFamily="monospace"
+        android:letterSpacing="0.04"
+        android:text="Locating ArUco fiducials..."
+        android:textColor="@color/h2s_blue_light"
+        android:textSize="12sp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="Keep wristband aligned in viewfinder"
+        android:textColor="@color/h2s_text_muted"
+        android:textSize="11sp" />
+
+</LinearLayout>
