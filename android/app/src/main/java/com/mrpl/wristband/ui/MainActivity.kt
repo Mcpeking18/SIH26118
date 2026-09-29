@@ -53,7 +53,7 @@ class MainActivity : AppCompatActivity() {
                 )
                 R.id.nav_map -> Triple(
                     RefineryMapFragment(),
-                    "ABC REFINERY",
+                    "MRPL MANGALORE",
                     "SECTOR LIVE MAP"
                 )
                 R.id.nav_profile -> Triple(
