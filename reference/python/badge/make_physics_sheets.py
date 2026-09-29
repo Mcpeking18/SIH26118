@@ -3,7 +3,6 @@ import numpy as np
 import os
 import sys
 
-# Import the actual physics engine
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'reference', 'python')))
 from engine.dosimetry import SYNTHETIC_CALIBRATION, locus_lab_for_lightness, UNEXPOSED_PAD_LAB
 from engine.colorimetry import lab_to_srgb
@@ -15,8 +14,19 @@ def draw_badge(img, x_offset_px, y_offset_px, px_per_mm, pad_color_bgr):
     h_px = int(height_mm * px_per_mm)
     
     cv2.rectangle(img, (x_offset_px, y_offset_px), (x_offset_px + w_px, y_offset_px + h_px), (255, 255, 255), -1)
-    cv2.rectangle(img, (x_offset_px, y_offset_px), (x_offset_px + w_px, y_offset_px + h_px), (200, 200, 200), 2)
     
+    crop_len = int(5.0 * px_per_mm)
+    crop_color = (150, 150, 150)
+    thick = 2
+    cv2.line(img, (x_offset_px, y_offset_px), (x_offset_px - crop_len, y_offset_px), crop_color, thick)
+    cv2.line(img, (x_offset_px, y_offset_px), (x_offset_px, y_offset_px - crop_len), crop_color, thick)
+    cv2.line(img, (x_offset_px + w_px, y_offset_px), (x_offset_px + w_px + crop_len, y_offset_px), crop_color, thick)
+    cv2.line(img, (x_offset_px + w_px, y_offset_px), (x_offset_px + w_px, y_offset_px - crop_len), crop_color, thick)
+    cv2.line(img, (x_offset_px, y_offset_px + h_px), (x_offset_px - crop_len, y_offset_px + h_px), crop_color, thick)
+    cv2.line(img, (x_offset_px, y_offset_px + h_px), (x_offset_px, y_offset_px + h_px + crop_len), crop_color, thick)
+    cv2.line(img, (x_offset_px + w_px, y_offset_px + h_px), (x_offset_px + w_px + crop_len, y_offset_px + h_px), crop_color, thick)
+    cv2.line(img, (x_offset_px + w_px, y_offset_px + h_px), (x_offset_px + w_px, y_offset_px + h_px + crop_len), crop_color, thick)
+
     aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
     fid_size = int(10.0 * px_per_mm)
     inset = int(5.0 * px_per_mm)
@@ -80,7 +90,6 @@ def draw_badge(img, x_offset_px, y_offset_px, px_per_mm, pad_color_bgr):
     px_sh = int(sh * px_per_mm)
     cv2.rectangle(img, (px_sx, px_sy), (px_sx + px_sw, px_sy + px_sh), pad_color_bgr, -1)
     
-# Meaningful dose levels in ppm.hr to generate test data for
 DOSES = [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 15.0, 20.0, 25.0, 30.0, 40.0, 50.0, 60.0, 80.0, 100.0]
 
 def generate_physics_colors():
@@ -104,15 +113,20 @@ badge_h_mm = 40.0
 badge_w_px = int(badge_w_mm * px_per_mm)
 badge_h_px = int(badge_h_mm * px_per_mm)
 
-# Use test folder
 out_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'test_sheets'))
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
 
 print(f"Generating physical dose sheets into {out_dir}...")
+margin_mm_single = 15.0
+canvas_w_single = int((badge_w_mm + 2 * margin_mm_single) * px_per_mm)
+canvas_h_single = int((badge_h_mm + 2 * margin_mm_single) * px_per_mm)
+x_off = int(margin_mm_single * px_per_mm)
+y_off = int(margin_mm_single * px_per_mm)
+
 for i, pad_bgr in enumerate(colors_bgr):
-    single_img = np.ones((badge_h_px, badge_w_px, 3), dtype=np.uint8) * 255
-    draw_badge(single_img, 0, 0, px_per_mm, pad_bgr)
+    single_img = np.ones((canvas_h_single, canvas_w_single, 3), dtype=np.uint8) * 255
+    draw_badge(single_img, x_off, y_off, px_per_mm, pad_bgr)
     cv2.imwrite(os.path.join(out_dir, f'badge_{DOSES[i]:03.0f}ppmhr.png'), single_img)
 
 cols = 4

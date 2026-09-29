@@ -4,11 +4,39 @@ import os
 
 width_mm = 30.0
 height_mm = 40.0
+margin_mm = 15.0  # substantial white margin
+
+canvas_w_mm = width_mm + 2 * margin_mm
+canvas_h_mm = height_mm + 2 * margin_mm
+
 px_per_mm = 40.0
 
+canvas_w_px = int(canvas_w_mm * px_per_mm)
+canvas_h_px = int(canvas_h_mm * px_per_mm)
+img = np.ones((canvas_h_px, canvas_w_px, 3), dtype=np.uint8) * 255
+
+x_off = int(margin_mm * px_per_mm)
+y_off = int(margin_mm * px_per_mm)
 w_px = int(width_mm * px_per_mm)
 h_px = int(height_mm * px_per_mm)
-img = np.ones((h_px, w_px, 3), dtype=np.uint8) * 255
+
+# Draw crop marks instead of a full rectangle so it doesn't touch the markers
+crop_len = int(5.0 * px_per_mm)
+crop_color = (150, 150, 150)
+thick = 2
+# Top-Left
+cv2.line(img, (x_off, y_off), (x_off - crop_len, y_off), crop_color, thick)
+cv2.line(img, (x_off, y_off), (x_off, y_off - crop_len), crop_color, thick)
+# Top-Right
+cv2.line(img, (x_off + w_px, y_off), (x_off + w_px + crop_len, y_off), crop_color, thick)
+cv2.line(img, (x_off + w_px, y_off), (x_off + w_px, y_off - crop_len), crop_color, thick)
+# Bottom-Left
+cv2.line(img, (x_off, y_off + h_px), (x_off - crop_len, y_off + h_px), crop_color, thick)
+cv2.line(img, (x_off, y_off + h_px), (x_off, y_off + h_px + crop_len), crop_color, thick)
+# Bottom-Right
+cv2.line(img, (x_off + w_px, y_off + h_px), (x_off + w_px + crop_len, y_off + h_px), crop_color, thick)
+cv2.line(img, (x_off + w_px, y_off + h_px), (x_off + w_px, y_off + h_px + crop_len), crop_color, thick)
+
 
 aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
 fid_size = int(10.0 * px_per_mm)
@@ -24,8 +52,8 @@ ids = [0, 1, 2, 3]
 for i, (cx, cy) in enumerate(centers):
     marker = cv2.aruco.generateImageMarker(aruco_dict, ids[i], fid_size)
     marker_bgr = cv2.cvtColor(marker, cv2.COLOR_GRAY2BGR)
-    x0 = cx - fid_size // 2
-    y0 = cy - fid_size // 2
+    x0 = x_off + cx - fid_size // 2
+    y0 = y_off + cy - fid_size // 2
     img[y0:y0+fid_size, x0:x0+fid_size] = marker_bgr
 
 patch_size = 4.0
@@ -75,8 +103,8 @@ print("ID 3 / BL: x=0.0..10.0, y=30.0..40.0\n")
 
 print("PATCHES:")
 for i, rect in enumerate(patch_rects):
-    px_x = int(rect[0] * px_per_mm)
-    px_y = int(rect[1] * px_per_mm)
+    px_x = x_off + int(rect[0] * px_per_mm)
+    px_y = y_off + int(rect[1] * px_per_mm)
     px_w = int(rect[2] * px_per_mm)
     px_h = int(rect[3] * px_per_mm)
     cv2.rectangle(img, (px_x, px_y), (px_x + px_w, px_y + px_h), PATCHES[i][1], -1)
@@ -86,8 +114,8 @@ sw, sh = 10.0, 20.0
 cx, cy = 15.0, 20.0
 sx = cx - sw / 2.0
 sy = cy - sh / 2.0
-px_sx = int(sx * px_per_mm)
-px_sy = int(sy * px_per_mm)
+px_sx = x_off + int(sx * px_per_mm)
+px_sy = y_off + int(sy * px_per_mm)
 px_sw = int(sw * px_per_mm)
 px_sh = int(sh * px_per_mm)
 cv2.rectangle(img, (px_sx, px_sy), (px_sx + px_sw, px_sy + px_sh), (200, 232, 232), -1)
@@ -99,4 +127,4 @@ print("All geometry validation checks passed.")
 
 out_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'badge_v2_reference.png'))
 cv2.imwrite(out_path, img)
-print(f"Generated {out_path}")
+print(f"Generated {out_path} with 15mm quiet zone margin and crop marks")
