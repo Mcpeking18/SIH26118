@@ -2,6 +2,9 @@ package com.mrpl.wristband.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.content.Context
+import org.opencv.android.OpenCVLoader
+import android.util.Log
 import android.text.InputType
 import android.widget.CheckBox
 import android.widget.EditText
@@ -18,7 +21,12 @@ class SignInActivity : AppCompatActivity() {
     private var isPasswordVisible = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+                super.onCreate(savedInstanceState)
+        if (!OpenCVLoader.initDebug()) {
+            Log.e("OpenCV", "Unable to load OpenCV!")
+        } else {
+            Log.d("OpenCV", "OpenCV loaded successfully!")
+        }
         setContentView(R.layout.activity_sign_in)
 
         val etEmpId = findViewById<EditText>(R.id.etEmpId)
@@ -27,7 +35,7 @@ class SignInActivity : AppCompatActivity() {
         val cbAcknowledge = findViewById<CheckBox>(R.id.cbAcknowledge)
         val btnSignIn = findViewById<MaterialButton>(R.id.btnSignIn)
         val tvResetPin = findViewById<TextView>(R.id.tvResetPin)
-        val layoutTrainingHub = findViewById<LinearLayout>(R.id.layoutTrainingHub)
+//        val layoutTrainingHub = findViewById<LinearLayout>(R.id.layoutTrainingHub)
 
         ivTogglePassword.setOnClickListener {
             isPasswordVisible = !isPasswordVisible
@@ -45,21 +53,19 @@ class SignInActivity : AppCompatActivity() {
             Toast.makeText(this, "Security PIN reset requested through supervisor node.", Toast.LENGTH_SHORT).show()
         }
 
-        layoutTrainingHub.setOnClickListener {
-            Toast.makeText(this, "Accessing Refinery Safety & Sensor Training Module...", Toast.LENGTH_SHORT).show()
-        }
+//        layoutTrainingHub.setOnClickListener {
+//            Toast.makeText(this, "Accessing Refinery Safety & Sensor Training Module...", Toast.LENGTH_SHORT).show()
+//        }
 
         btnSignIn.setOnClickListener {
-            if (!cbAcknowledge.isChecked) {
-                Toast.makeText(this, "Please acknowledge refinery safety protocols to proceed.", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-
             val empId = etEmpId.text.toString().trim()
             if (empId.isEmpty()) {
-                Toast.makeText(this, "Please enter Employee ID", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Please enter a Name", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+            
+            val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            prefs.edit().putString("logged_in_name", empId).apply()
 
             // Launch Main Dashboard
             val intent = Intent(this, MainActivity::class.java)

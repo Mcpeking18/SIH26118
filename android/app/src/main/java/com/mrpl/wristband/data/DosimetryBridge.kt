@@ -3,8 +3,11 @@ package com.mrpl.wristband.data
 import android.graphics.Bitmap
 import com.mrpl.wristband.cv.Detector
 import com.mrpl.wristband.cv.Sampler
+import com.mrpl.wristband.color.Normalizer
+import com.mrpl.wristband.dosimetry.Dosimetry
 import org.opencv.android.Utils
 import org.opencv.core.Mat
+import org.opencv.imgproc.Imgproc
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -37,35 +40,53 @@ object DosimetryBridge {
         }
 
         try {
+            val rgbaMat = Mat()
+            Utils.bitmapToMat(bitmap, rgbaMat)
             val mat = Mat()
-            Utils.bitmapToMat(bitmap, mat)
+            org.opencv.imgproc.Imgproc.cvtColor(rgbaMat, mat, org.opencv.imgproc.Imgproc.COLOR_RGBA2BGR)
+            rgbaMat.release()
             // Detector.rectify() is the correct API entry point (not detect())
             val detection = detector.rectify(mat)
 
             if (detection.ok && detection.warped != null) {
-                // Sampler is an object – call sampleBadge() directly
-                val _badgeSamples = Sampler.sampleBadge(detection.warped)
-                // Integration point: Compute actual delta L* from badgeSamples.pad
-                // and evaluate against calibration curve. Physical chamber calibration
-                // is pending Phase 3; report a verified detection with realistic values.
+                val badgeSamples = Sampler.sampleBadge(detection.warped)
+                
+                // Normalizer
+                                val normalizedResult = Normalizer.normalizeBadge(badgeSamples)
+                if (normalizedResult.padLab == null) {
+                    return ScanUiResult(
+                        wristbandId = wristbandIdHint,
+                        timestamp = now,
+                        isMock = false,
+                        scanState = ScanState.POOR_IMAGE_QUALITY,
+                        errorMessage = "Color normalization failed (Glare/Shadow)"
+                    )
+                }
+
+                // Dosimetry
+                val deltaL = normalizedResult.deltaLStar
+                val dResult = Dosimetry.assessScan(
+                    observable = deltaL,
+                    shiftHours = 8.0,
+                    deltaE00 = normalizedResult.deltaE00,
+                    deltaLStar = normalizedResult.deltaLStar
+                )
+
                 return ScanUiResult(
                     wristbandId = wristbandIdHint,
-                    refinery = "ABC Refinery",
-                    unit = "Hydrodesulfurization Unit",
-                    zone = "HDS-04",
+                    refinery = null,
+                    unit = null,
+                    zone = null,
                     timestamp = now,
-                    peakIntensityPpm = 1.42,
-                    cumulativeConcentrationPpm = 0.34,
-                    dosePpmHr = 5.8,
-                    twaPpm = 0.72,
-                    darkeningPercent = 34.0,
-                    e0 = 0.91,
-                    verdict = "WITHIN LIMITS",
-                    level = "LOW",
-                    batteryPercent = 88,
-                    calibrationDaysLeft = 18,
-                    isEncrypted = true,
-                    lastCloudSync = now,
+                    peakIntensityPpm = null,
+                    cumulativeConcentrationPpm = null,
+                    dosePpmHr = dResult.dosePpmHr,
+                    twaPpm = dResult.twaPpm,
+                    deltaLStar = normalizedResult.deltaLStar,
+                    deltaE00 = normalizedResult.deltaE00,
+                    verdict = dResult.verdict.name,
+                    level = null,
+                    lastCloudSync = null,
                     isMock = false
                 )
             }
@@ -74,10 +95,12 @@ object DosimetryBridge {
         }
 
         // Fallback demo result for testing and simulation
-        return MockDataProvider.defaultScanResult.copy(
+        return ScanUiResult(
             wristbandId = wristbandIdHint,
             timestamp = now,
-            isMock = true
+            isMock = false,
+            scanState = ScanState.PROCESSING_ERROR,
+            errorMessage = "Invalid Image or Lighting"
         )
     }
 

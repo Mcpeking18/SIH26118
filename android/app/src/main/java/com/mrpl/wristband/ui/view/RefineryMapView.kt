@@ -11,7 +11,7 @@ import android.view.MotionEvent
 import android.view.View
 import com.mrpl.wristband.data.MockDataProvider
 import com.mrpl.wristband.data.RefineryZone
-import com.mrpl.wristband.data.ZoneStatus
+import com.mrpl.wristband.data.DemoExposureStatus
 
 /**
  * Interactive Schematic Refinery Map View.
@@ -121,12 +121,7 @@ class RefineryMapView @JvmOverloads constructor(
             val rect = positions[i]
             zoneRects.add(Pair(rect, zone))
 
-            val statusColor = when (zone.status) {
-                ZoneStatus.LOW -> Color.parseColor("#10B981")
-                ZoneStatus.ELEVATED -> Color.parseColor("#F59E0B")
-                ZoneStatus.HIGH -> Color.parseColor("#F97316")
-                ZoneStatus.CRITICAL -> Color.parseColor("#EF4444")
-            }
+            val statusColor = Color.parseColor(zone.status.colorHex)
 
             // Card background
             canvas.drawRoundRect(rect, 16f, 16f, cardBgPaint)
@@ -147,16 +142,11 @@ class RefineryMapView @JvmOverloads constructor(
 
             // Live PPM readout
             ppmPaint.color = statusColor
-            canvas.drawText("${zone.cumulativePpm} PPM", rect.left + 20f, rect.bottom - 22f, ppmPaint)
+            canvas.drawText("${zone.cumulativeDosePpmHr} ppm·hr", rect.left + 20f, rect.bottom - 22f, ppmPaint)
 
             // Status label on right
             badgePaint.color = statusColor
-            val statusLabel = when (zone.status) {
-                ZoneStatus.LOW -> "LOW"
-                ZoneStatus.ELEVATED -> "ELEVATED"
-                ZoneStatus.HIGH -> "HIGH"
-                ZoneStatus.CRITICAL -> "CRIT"
-            }
+            val statusLabel = zone.status.label
             canvas.drawText(statusLabel, rect.right - 90f, rect.bottom - 22f, badgePaint)
         }
     }

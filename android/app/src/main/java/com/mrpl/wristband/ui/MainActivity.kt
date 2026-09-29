@@ -2,6 +2,8 @@ package com.mrpl.wristband.ui
 
 import android.content.Intent
 import android.os.Bundle
+import org.opencv.android.OpenCVLoader
+import android.util.Log
 import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -16,18 +18,23 @@ class MainActivity : AppCompatActivity() {
     private lateinit var bottomNav: BottomNavigationView
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+                super.onCreate(savedInstanceState)
+        if (!OpenCVLoader.initDebug()) {
+            Log.e("OpenCV", "Unable to load OpenCV!")
+        } else {
+            Log.d("OpenCV", "OpenCV loaded successfully!")
+        }
         setContentView(R.layout.activity_main)
 
         bottomNav = findViewById(R.id.bottomNavigation)
 
-        val btnScan = findViewById<MaterialButton>(R.id.btnTopBarScan)
+//        val btnScan = findViewById<MaterialButton>(R.id.btnTopBarScan)
         val tvTitle = findViewById<TextView>(R.id.tvCurrentTabTitle)
         val tvSub = findViewById<TextView>(R.id.tvCurrentTabSub)
 
-        btnScan.setOnClickListener {
-            startActivity(Intent(this, ScannerActivity::class.java))
-        }
+//        btnScan.setOnClickListener {
+//            startActivity(Intent(this, ScannerActivity::class.java))
+//        }
 
         // Handle intent extras (e.g. from ExposureResultActivity)
         val openTab = intent.getStringExtra("OPEN_TAB")
@@ -35,9 +42,9 @@ class MainActivity : AppCompatActivity() {
         bottomNav.setOnItemSelectedListener { item ->
             val (fragment, title, sub) = when (item.itemId) {
                 R.id.nav_home -> Triple(
-                    DevicePairingFragment(),
+                    ScanHomeFragment(),
                     getString(R.string.app_name),
-                    "DEVICE PAIRING"
+                    "SCAN WRISTBAND"
                 )
                 R.id.nav_history -> Triple(
                     ExposureHistoryFragment(),

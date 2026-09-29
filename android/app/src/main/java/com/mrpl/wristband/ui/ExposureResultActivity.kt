@@ -1,80 +1,80 @@
 package com.mrpl.wristband.ui
 
-import android.content.Intent
-import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
-import android.widget.LinearLayout
+import android.widget.ArrayAdapter
+import android.widget.Spinner
+import android.widget.Button
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.mrpl.wristband.R
 import com.mrpl.wristband.data.ScanUiResult
-import com.mrpl.wristband.ui.view.TrendLineChartView
 
 class ExposureResultActivity : AppCompatActivity() {
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_exposure_result)
 
-        @Suppress("DEPRECATION")
-        val result = intent.getSerializableExtra("SCAN_RESULT") as? ScanUiResult
-            ?: return
+        val btnSaveResult = findViewById<Button>(R.id.btnSaveResult)
+        val btnClose = findViewById<ImageView>(R.id.btnCloseResult)
 
-        // Bind data to views
-        findViewById<TextView>(R.id.tvResultSensorId).text = result.wristbandId
-        findViewById<TextView>(R.id.tvResultPeak).text = String.format("%.2f PPM", result.peakIntensityPpm)
-        findViewById<TextView>(R.id.tvResultCumulative).text = String.format("%.2f PPM", result.cumulativeConcentrationPpm)
-        findViewById<TextView>(R.id.tvResultVerdict).text = result.verdict
-        findViewById<TextView>(R.id.tvResultBattery).text = "BATTERY\n${result.batteryPercent}%"
-        findViewById<TextView>(R.id.tvLastSync).text = result.timestamp
+        
+        val spinnerArea = findViewById<Spinner>(R.id.spinnerArea)
+        val areas = listOf("Unknown Area") + com.mrpl.wristband.data.DemoAreas.AREAS
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, areas)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinnerArea.adapter = adapter
 
-        val tvPeakLevel = findViewById<TextView>(R.id.tvResultPeakLevel)
-        tvPeakLevel.text = "LEVEL: ${result.level}"
-        val levelColor = when (result.level) {
-            "LOW" -> Color.parseColor("#10B981")
-            "ELEVATED" -> Color.parseColor("#F59E0B")
-            "HIGH" -> Color.parseColor("#F97316")
-            "CRITICAL" -> Color.parseColor("#EF4444")
-            else -> Color.parseColor("#10B981")
-        }
-        tvPeakLevel.setTextColor(levelColor)
-        findViewById<TextView>(R.id.tvResultVerdict).setTextColor(levelColor)
 
-        val calibText = "CALIBRATION\nVALID (${result.calibrationDaysLeft}d Left)"
-        findViewById<TextView>(R.id.tvResultCalibration).text = calibText
+        btnClose.setOnClickListener { finish() }
 
-        // Seed chart with mock waveform data
-        val chart = findViewById<TrendLineChartView>(R.id.chartWaveform)
-        chart.setData(
-            floatArrayOf(0.3f, 0.6f, 0.8f, 1.42f, 1.1f, 0.7f, 0.34f, 0.45f),
-            Color.parseColor("#3B82F6"),
-            0.72f,
-            Color.parseColor("#F59E0B")
-        )
-
-        // Actions
-        val btnDashboard = findViewById<LinearLayout>(R.id.btnGoDashboard)
-        val btnScanNew = findViewById<LinearLayout>(R.id.btnScanNewDevice)
-        val btnViewHistory = findViewById<LinearLayout>(R.id.btnViewFullHistory)
-
-        btnDashboard.setOnClickListener {
-            val intent = Intent(this, MainActivity::class.java)
-            intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP
-            startActivity(intent)
-            finish()
+        val scanResult: ScanUiResult? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra("SCAN_RESULT", ScanUiResult::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra("SCAN_RESULT")
         }
 
-        btnScanNew.setOnClickListener {
-            startActivity(Intent(this, ScannerActivity::class.java))
-            finish()
+        val tvDose = findViewById<TextView>(R.id.tvDosePpmHr)
+        val tvTwa = findViewById<TextView>(R.id.tvTwaPpm)
+        val tvDeltaL = findViewById<TextView>(R.id.tvDeltaL)
+        val tvDeltaE = findViewById<TextView>(R.id.tvDeltaE)
+        val tvTimestamp = findViewById<TextView>(R.id.tvTimestamp)
+        val tvWristbandId = findViewById<TextView>(R.id.tvWristbandId)
+
+        if (scanResult != null) {
+            tvDose.text = if (scanResult.dosePpmHr != null) String.format("%.2f", scanResult.dosePpmHr) else "--"
+            tvTwa.text = if (scanResult.twaPpm != null) String.format("%.2f", scanResult.twaPpm) else "--"
+            tvDeltaL.text = String.format("%.2f", scanResult.deltaLStar ?: 0.0)
+            tvDeltaE.text = String.format("%.2f", scanResult.deltaE00 ?: 0.0)
+            tvTimestamp.text = scanResult.timestamp ?: "Unknown Time"
+            tvWristbandId.text = scanResult.wristbandId ?: "Unknown ID" 
+            val tvClassification = findViewById<TextView>(R.id.tvClassification)
+            val dose = scanResult.dosePpmHr
+            if (dose != null) {
+                val status = com.mrpl.wristband.data.DemoExposureStatus.fromDose(dose)
+                tvClassification.text = status.label
+                tvClassification.setTextColor(android.graphics.Color.parseColor(status.colorHex))
+            } else {
+                tvClassification.visibility = android.view.View.GONE
+            }
+        } else {
+            tvDose.text = "--"
+            tvTwa.text = "--"
+            tvDeltaL.text = "--"
+            tvDeltaE.text = "--"
+            tvTimestamp.text = "--"
+            tvWristbandId.text = "--"
         }
 
-        btnViewHistory.setOnClickListener {
-            // Navigate to main activity on History tab
-            val intent = Intent(this, MainActivity::class.java)
-            intent.putExtra("OPEN_TAB", "HISTORY")
-            intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP
-            startActivity(intent)
+        btnSaveResult.setOnClickListener {
+            val selectedArea = spinnerArea.selectedItem as String
+            if (scanResult != null) {
+                val finalZone = if (selectedArea == "Unknown Area") null else selectedArea
+                val updatedResult = scanResult.copy(zone = finalZone)
+                com.mrpl.wristband.data.HistoryManager.saveRecord(this, updatedResult)
+            }
             finish()
         }
     }

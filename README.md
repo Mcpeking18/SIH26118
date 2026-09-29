@@ -8,13 +8,18 @@ The wearable is passive because it has to be: MRPL's sour-service areas are ATEX
 
 ## Architecture
 
-This repository contains the full ecosystem for the wristband, currently in transition from a Python prototype to a native Android application:
+This repository contains the full ecosystem for the wristband, currently in active transition from a Python prototype to a native Android application:
 
-*   **`reference/python/`**: The golden mathematical reference implementation. Contains the OpenCV processing pipeline (`engine/`), synthetic generators (`sim/`), and end-to-end tests (`tests/`). This code remains the operational source of truth while the Android app is built.
-*   **`experimental/`**: The decoupled calibration zone. True gaseous H2S exposure data (from spectrophotometer measurements) will live here alongside Python scripts to curve-fit that raw data into calibration coefficients.
-*   **`android/`**: The future Kotlin + OpenCV native Android application. It will run the image pipeline locally on the phone, consuming calibration coefficients exported by the experimental layer.
-*   **`backend/`**: A reference FastAPI service (`hse/`), scanning PWA (`webapp/`), and risk map (`dashboard/`). This acts as the cloud sync target for the Android app.
-*   **`cpp_legacy/`**: An abandoned experimental C++ port of the engine.
+*   **`reference/python/`**: The golden mathematical reference implementation. Contains the OpenCV processing pipeline (`engine/`), synthetic generators (`sim/`), and end-to-end tests (`tests/`). This code remains the operational source of truth while the Android app is built and validated.
+*   **`android/`**: The native Kotlin + OpenCV Android application. The project foundation has been scaffolded and built on a physical device. Kotlin + OpenCV SDK architecture is successfully linked and compiling. The migration from Python engine modules is ongoing (see `android/MIGRATION_MAP.md`). **The massive OpenCV Android SDK (version 5.0.0+) is NOT tracked in Git to save space.** To build the Android app, you must download the official OpenCV Android SDK and extract the `sdk` folder directly into the `android/opencv/` directory.
+*   **`backend/`**: A reference FastAPI service (`hse/`), scanning PWA (`webapp/`), and risk map (`dashboard/`). This acts as the cloud sync target for the Android app. Serves identical routes on the standard library via `serve_dev.py` when FastAPI is unavailable.
+*   **`reference/python/engine/`**: Individual module migration map:
+    *   `badge_spec.py` → `com.mrpl.wristband.config.WristbandSpec.kt` (Geometry - COMPLETED)
+    *   `detect.py` → `com.mrpl.wristband.cv.Detector.kt` (ArUco detection/rectification - IN PROGRESS)
+    *   `colorimetry.py` → Kotlin color conversion (PURE MATH - no Android dependency)
+    *   `dosimetry.py` → Kotlin dosimetry math (PURE MATH - no Android dependency)
+    *   `pipeline.py` → Kotlin pipeline orchestrator (IN PROGRESS)
+*   **`cpp_legacy/`**: An abandoned experimental C++ port of the engine. Retained only as a historical reference.
 
 ## Chemistry and Calibration Status (Important Limitations)
 
@@ -22,6 +27,7 @@ This repository contains the full ecosystem for the wristband, currently in tran
 
 **Calibration is Pending:** 
 Currently, the pipeline uses a synthetic placeholder calibration model for software testing. Preliminary lab tests using liquid Na2S proved the progressive color change of CuSO4, but **liquid testing is not gaseous H2S calibration.** 
+
 Before field use, the calibration curve must be experimentally fitted against certified H2S atmospheres at known concentration-time products.
 
 The architecture strictly decouples this: the Android/Python image-processing engines simply read a configuration profile containing the calibration polynomial coefficients. When the real lab data arrives, you only update the configuration file; no computer vision code needs to be rewritten.
@@ -55,6 +61,21 @@ export PYTHONPATH="$PWD/reference/python:$PWD/backend"
 python3 -m reference.python.tests.smoke_endtoend
 ```
 
-### Important Android Build Note
-The massive OpenCV Android SDK (version 5.0.0+) is NOT tracked in Git to save space. 
-To build the Android app, you must download the official OpenCV Android SDK and extract the sdk folder directly into the ndroid/opencv/ directory.
+## Project Status Summary
+
+| Area | Status |
+|------|--------|
+| **Android app foundation** | Built and compiling on physical device |
+| **Python reference engine** | Golden reference, fully operational |
+| **Engine migration to Kotlin** | Ongoing (see MIGRATION_MAP.md) |
+| **Calibration data** | Pending - synthetic placeholders for testing only |
+| **Final dose metric** | To be decided experimentally (-dL*, dE, or multi-feature) |
+| **OpenCV Android SDK** | Not tracked in Git - must be downloaded separately |
+| **Backend (FastAPI/stdlib)** | Fully functional, dual-mode serving |
+
+## Development Notes
+
+- The `reference/python/` directory is the source of truth for all mathematical implementations.
+- The `android/` app consumes calibration coefficients exported from the `experimental/` zone (or eventually from certified lab data).
+- When updating calibration coefficients, only the configuration file needs to change - the computer vision pipeline remains unchanged.
+- The backend supports both FastAPI (`uvicorn hse.api:app`) and stdlib (`python3 -m hse.serve_dev`) deployment modes.
