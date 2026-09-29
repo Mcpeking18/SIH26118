@@ -31,10 +31,7 @@
             android:windowSoftInputMode="adjustResize" />
 
         <!-- Scanner Screen -->
-        <activity
-            android:name=".ui.ScannerActivity"
-            android:exported="false"
-            android:windowSoftInputMode="adjustResize" />
+        
 
         <!-- Exposure Result Screen -->
         <activity

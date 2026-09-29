@@ -10,7 +10,9 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.net.Uri
+import android.content.Context
 import android.os.Bundle
+import com.mrpl.wristband.data.HistoryManager
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -19,7 +21,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.widget.ImageButton
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -43,18 +44,20 @@ class ScanHomeFragment : Fragment() {
 
     private lateinit var viewFinder: PreviewView
     private lateinit var tvStandby: TextView
+    private val currentWristbandId: String = "WB-DEMO-001" // Prototype Dummy ID
+
     private lateinit var cameraExecutor: ExecutorService
     
     private var isTorchOn = false
-    private var isFrontCamera = false
     private var camera: Camera? = null
+    private var imageCapture: ImageCapture? = null
     
     private var isAutoMode = true
-    private var autoCaptureActive = true
+    private var isProcessingCapture = false
     private var consecutiveHits = 0
     private val HIT_THRESHOLD = 10
     private var lastAnalysisTime = 0L
-    private var isProcessingFrame = false
+    private var stabilizationStartTime = 0L
 
     private val detector by lazy { Detector() }
 
@@ -64,7 +67,6 @@ class ScanHomeFragment : Fragment() {
                 startCamera()
             } else {
                 Toast.makeText(requireContext(), "Camera permission is required to scan.", Toast.LENGTH_LONG).show()
-                // You could show a "Permission Denied" UI layout here
             }
         }
 
@@ -94,11 +96,17 @@ class ScanHomeFragment : Fragment() {
         cameraExecutor = Executors.newSingleThreadExecutor()
 
         val btnTorch = view.findViewById<ImageButton>(R.id.btnTorch)
-        
         val btnToggleMode = view.findViewById<ImageButton>(R.id.btnToggleMode)
         val btnLibrary = view.findViewById<LinearLayout>(R.id.btnLibrary)
         val btnInitiateScan = view.findViewById<LinearLayout>(R.id.btnInitiateScan)
-        val tvManualEntry = view.findViewById<TextView>(R.id.tvManualSensorEntry)
+
+        val prefs = requireContext().getSharedPreferences("scanner_prefs", Context.MODE_PRIVATE)
+        isAutoMode = prefs.getBoolean("is_auto_mode", true)
+        if (isAutoMode) {
+            btnToggleMode.setImageResource(R.drawable.ic_auto_mode)
+        } else {
+            btnToggleMode.setImageResource(R.drawable.ic_manual_mode)
+        }
 
         btnTorch.setOnClickListener {
             isTorchOn = !isTorchOn
@@ -110,12 +118,11 @@ class ScanHomeFragment : Fragment() {
             }
         }
 
-        
-        
         btnToggleMode.setOnClickListener {
             isAutoMode = !isAutoMode
-            autoCaptureActive = true
+            prefs.edit().putBoolean("is_auto_mode", isAutoMode).apply()
             consecutiveHits = 0
+            stabilizationStartTime = 0L
             if (isAutoMode) {
                 btnToggleMode.setImageResource(R.drawable.ic_auto_mode)
                 Toast.makeText(requireContext(), "Auto-scan enabled", Toast.LENGTH_SHORT).show()
@@ -132,21 +139,28 @@ class ScanHomeFragment : Fragment() {
         }
         
         btnInitiateScan.setOnClickListener {
-            if (!isAutoMode && autoCaptureActive) {
-                autoCaptureActive = false
-                // Force a capture on the next frame or use a distinct capture process
-                // Here we just flag that manual shutter was pressed
-                Toast.makeText(requireContext(), "Capturing...", Toast.LENGTH_SHORT).show()
-                // We let processImageProxy catch the flag if we wanted to grab a frame,
-                // but since it's cleaner, we will set a flag that the next valid frame is grabbed.
-                manualShutterRequested = true
-            } else if (isAutoMode) {
-                Toast.makeText(requireContext(), "In Auto mode. Hold camera steady over badge.", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        tvManualEntry.setOnClickListener {
-            // handle entry
+            if (isProcessingCapture) return@setOnClickListener
+            val capture = imageCapture ?: return@setOnClickListener
+            
+            isProcessingCapture = true
+            tvStandby.text = "● CAPTURING..."
+            tvStandby.setTextColor(requireContext().getColor(R.color.h2s_blue_light))
+            
+            capture.takePicture(
+                ContextCompat.getMainExecutor(requireContext()),
+                object : ImageCapture.OnImageCapturedCallback() {
+                    @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
+                    override fun onCaptureSuccess(image: ImageProxy) {
+                        val bitmap = image.toBitmap()
+                        image.close()
+                        runScanPipeline(bitmap, "H2S-G4-9982")
+                    }
+                    override fun onError(exception: ImageCaptureException) {
+                        isProcessingCapture = false
+                        Toast.makeText(requireContext(), "Capture failed: ${exception.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            )
         }
 
         if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
@@ -156,8 +170,6 @@ class ScanHomeFragment : Fragment() {
         }
     }
 
-    private var manualShutterRequested = false
-
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext())
         cameraProviderFuture.addListener({
@@ -165,6 +177,10 @@ class ScanHomeFragment : Fragment() {
             val preview = Preview.Builder().build().also {
                 it.setSurfaceProvider(viewFinder.surfaceProvider)
             }
+
+            imageCapture = ImageCapture.Builder()
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                .build()
 
             val imageAnalyzer = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -175,11 +191,10 @@ class ScanHomeFragment : Fragment() {
                     }
                 }
 
-            val cameraSelector = if (isFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
-
+            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
             try {
                 cameraProvider.unbindAll()
-                camera = cameraProvider.bindToLifecycle(viewLifecycleOwner, cameraSelector, preview, imageAnalyzer)
+                camera = cameraProvider.bindToLifecycle(viewLifecycleOwner, cameraSelector, preview, imageAnalyzer, imageCapture)
             } catch (exc: Exception) {
                 Log.e("ScanHomeFragment", "Use case binding failed", exc)
             }
@@ -188,7 +203,7 @@ class ScanHomeFragment : Fragment() {
 
     @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
     private fun processImageProxy(imageProxy: ImageProxy) {
-        if (!autoCaptureActive || isProcessingFrame) {
+        if (isProcessingCapture) {
             imageProxy.close()
             return
         }
@@ -199,7 +214,6 @@ class ScanHomeFragment : Fragment() {
             return
         }
         
-        isProcessingFrame = true
         lastAnalysisTime = currentTime
 
         try {
@@ -212,26 +226,53 @@ class ScanHomeFragment : Fragment() {
             
             val detection = detector.rectify(mat)
             if (detection.ok) {
-                consecutiveHits++
-                
-                requireActivity().runOnUiThread {
-                    tvStandby.text = "* ALIGNING (${consecutiveHits}/${HIT_THRESHOLD})"
-                    tvStandby.setTextColor(requireContext().getColor(R.color.h2s_yellow))
-                }
-                
-                if ((isAutoMode && consecutiveHits >= HIT_THRESHOLD) || (!isAutoMode && manualShutterRequested)) {
-                    autoCaptureActive = false
-                    manualShutterRequested = false
-                    val safeBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, false)
-                    requireActivity().runOnUiThread {
-                        runScanPipeline(safeBitmap, "H2S-G4-9982")
+                if (isAutoMode && !isProcessingCapture) {
+                    if (stabilizationStartTime == 0L) {
+                        stabilizationStartTime = System.currentTimeMillis()
+                    }
+                    
+                    val elapsed = System.currentTimeMillis() - stabilizationStartTime
+                    val remaining = 5 - (elapsed / 1000).toInt()
+                    
+                    if (elapsed >= 5000) {
+                        isProcessingCapture = true
+                        activity?.runOnUiThread {
+                            tvStandby.text = "● CAPTURING..."
+                            tvStandby.setTextColor(requireContext().getColor(R.color.h2s_blue_light))
+                            
+                            imageCapture?.takePicture(
+                                ContextCompat.getMainExecutor(requireContext()),
+                                object : ImageCapture.OnImageCapturedCallback() {
+                                    @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
+                                    override fun onCaptureSuccess(image: ImageProxy) {
+                                        val bmp = image.toBitmap()
+                                        image.close()
+                                        runScanPipeline(bmp, "H2S-G4-9982")
+                                    }
+                                    override fun onError(exception: ImageCaptureException) {
+                                        isProcessingCapture = false
+                                        stabilizationStartTime = 0L
+                                        Toast.makeText(requireContext(), "Capture failed", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+                        }
+                    } else {
+                        activity?.runOnUiThread {
+                            tvStandby.text = "● HOLD STEADY... ${remaining}s"
+                            tvStandby.setTextColor(requireContext().getColor(R.color.h2s_yellow))
+                        }
+                    }
+                } else if (!isAutoMode && !isProcessingCapture) {
+                    activity?.runOnUiThread {
+                        tvStandby.text = "● ALIGNED - READY TO CAPTURE"
+                        tvStandby.setTextColor(requireContext().getColor(R.color.h2s_yellow))
                     }
                 }
             } else {
-                consecutiveHits = 0
-                manualShutterRequested = false // reset if frame is bad
-                requireActivity().runOnUiThread {
-                    tvStandby.text = "* SEARCHING"
+                stabilizationStartTime = 0L
+                activity?.runOnUiThread {
+                    tvStandby.text = "● ALIGN THE WRISTBAND"
                     tvStandby.setTextColor(requireContext().getColor(R.color.h2s_text_muted))
                 }
             }
@@ -239,7 +280,6 @@ class ScanHomeFragment : Fragment() {
         } catch (e: Exception) {
             Log.e("ScanHomeFragment", "Error processing frame", e)
         } finally {
-            isProcessingFrame = false
             imageProxy.close()
         }
     }
@@ -251,7 +291,6 @@ class ScanHomeFragment : Fragment() {
             inputStream?.close()
             
             if (bitmap != null) {
-                // Resize if needed, then pass to pipeline
                 runScanPipeline(bitmap, "GALLERY-UPLOAD")
             }
         } catch (e: Exception) {
@@ -261,6 +300,12 @@ class ScanHomeFragment : Fragment() {
     }
 
     private fun runScanPipeline(bitmap: Bitmap, sensorIdHint: String) {
+        val actualId = if (sensorIdHint == "GALLERY-UPLOAD") sensorIdHint else currentWristbandId
+        if (!isAdded || activity == null) {
+            isProcessingCapture = false
+            return
+        }
+        
         val dialog = Dialog(requireContext())
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
         dialog.setContentView(R.layout.dialog_scanner_processing)
@@ -271,31 +316,36 @@ class ScanHomeFragment : Fragment() {
         val tvStep = dialog.findViewById<TextView>(R.id.tvProcessingStep)
         val handler = Handler(Looper.getMainLooper())
 
-        handler.postDelayed({ tvStep.text = "Detecting 4x4 ArUco markers..." }, 200)
-        handler.postDelayed({ tvStep.text = "Computing homography & perspective warp..." }, 600)
-        handler.postDelayed({ tvStep.text = "Sampling colorimetry & baseline patches..." }, 1000)
-        handler.postDelayed({ tvStep.text = "Evaluating dose..." }, 1400)
+        handler.postDelayed({ tvStep.text = "Processing wristband..." }, 200)
         
         handler.postDelayed({
-            dialog.dismiss()
             Thread {
-                val result: ScanUiResult = DosimetryBridge.processBitmap(bitmap, sensorIdHint)
-                if (activity != null) {
-                    requireActivity().runOnUiThread {
+                val result = DosimetryBridge.processBitmap(bitmap, actualId)
+                activity?.runOnUiThread {
+                    dialog.dismiss()
+                    isProcessingCapture = false
+                    
+                    if (result.scanState?.name == "PROCESSING_ERROR" || result.scanState?.name == "POOR_IMAGE_QUALITY" || result.errorMessage != null) {
+                        // OpenCV failed, keep scanner open and allow retry
+                        stabilizationStartTime = 0L
+                        Toast.makeText(requireContext(), "Wristband could not be detected/aligned. Please try again.", Toast.LENGTH_LONG).show()
+                    } else {
+                        // Success, open result activity
+                        HistoryManager.saveRecord(requireContext(), result)
                         val intent = Intent(requireActivity(), ExposureResultActivity::class.java)
                         intent.putExtra("SCAN_RESULT", result)
                         startActivity(intent)
                     }
                 }
             }.start()
-        }, 1800)
+        }, 500)
     }
     
     override fun onResume() {
         super.onResume()
-        autoCaptureActive = true
         consecutiveHits = 0
-        manualShutterRequested = false
+        stabilizationStartTime = 0L
+        isProcessingCapture = false
     }
 
     override fun onDestroyView() {

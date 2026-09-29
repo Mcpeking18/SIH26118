@@ -2,6 +2,7 @@ package com.mrpl.wristband.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.content.Context
 import org.opencv.android.OpenCVLoader
 import android.util.Log
 import android.text.InputType
@@ -57,16 +58,14 @@ class SignInActivity : AppCompatActivity() {
 //        }
 
         btnSignIn.setOnClickListener {
-            if (!cbAcknowledge.isChecked) {
-                Toast.makeText(this, "Please acknowledge refinery safety protocols to proceed.", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-
             val empId = etEmpId.text.toString().trim()
             if (empId.isEmpty()) {
-                Toast.makeText(this, "Please enter Employee ID", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Please enter a Name", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+            
+            val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            prefs.edit().putString("logged_in_name", empId).apply()
 
             // Launch Main Dashboard
             val intent = Intent(this, MainActivity::class.java)

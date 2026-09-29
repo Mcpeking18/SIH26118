@@ -10,7 +10,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.mrpl.wristband.R
 import com.mrpl.wristband.data.RefineryZone
-import com.mrpl.wristband.data.ZoneStatus
+import com.mrpl.wristband.data.DemoExposureStatus
 import com.mrpl.wristband.ui.view.TrendLineChartView
 
 class ZoneDetailsActivity : AppCompatActivity() {
@@ -23,12 +23,7 @@ class ZoneDetailsActivity : AppCompatActivity() {
         val zone = intent.getSerializableExtra("ZONE_DATA") as? RefineryZone
             ?: return
 
-        val statusColor = when (zone.status) {
-            ZoneStatus.LOW -> Color.parseColor("#10B981")
-            ZoneStatus.ELEVATED -> Color.parseColor("#F59E0B")
-            ZoneStatus.HIGH -> Color.parseColor("#F97316")
-            ZoneStatus.CRITICAL -> Color.parseColor("#EF4444")
-        }
+        val statusColor = Color.parseColor(zone.status.colorHex)
 
         // Back
         findViewById<ImageView>(R.id.btnZoneBack).setOnClickListener { finish() }
@@ -50,7 +45,7 @@ class ZoneDetailsActivity : AppCompatActivity() {
 
         // Metric tiles
         val tvCumulative = findViewById<TextView>(R.id.tvZoneCumulative)
-        tvCumulative.text = "${zone.cumulativePpm} PPM"
+        tvCumulative.text = "${zone.cumulativeDosePpmHr} ppm·hr"
         tvCumulative.setTextColor(statusColor)
 
         val tvPeak = findViewById<TextView>(R.id.tvZonePeak1Hr)

@@ -9,11 +9,29 @@ enum class ExposureSeverity {
     EVACUATION
 }
 
-enum class ZoneStatus {
-    LOW,
-    ELEVATED,
-    HIGH,
-    CRITICAL
+enum class DemoExposureStatus(val label: String, val colorHex: String) {
+    LOW("LOW", "#10B981"),
+    ELEVATED("ELEVATED", "#F59E0B"),
+    CONCERNING("CONCERNING", "#F97316"),
+    HIGH("HIGH", "#EA580C"),
+    VERY_HIGH("VERY HIGH", "#EF4444");
+
+    companion object {
+        fun fromDose(dose: Double?): DemoExposureStatus {
+            if (dose == null) return LOW
+            return when {
+                dose < 8.0 -> LOW
+                dose < 16.0 -> ELEVATED
+                dose < 32.0 -> CONCERNING
+                dose < 50.0 -> HIGH
+                else -> VERY_HIGH
+            }
+        }
+    }
+}
+
+object DemoAreas {
+    val AREAS = listOf("Plant Area A", "Unit 1", "Storage Area", "Process Area", "Workshop")
 }
 
 enum class ScanState {
@@ -27,19 +45,19 @@ enum class ScanState {
 
 data class ScanUiResult(
     val wristbandId: String = "H2S-G4-9982",
-    val refinery: String = "ABC Refinery",
-    val unit: String = "Hydrodesulfurization Unit",
-    val zone: String = "HDS-04",
-    val timestamp: String = "12 NOV 2024 - 14:22:04",
-    val peakIntensityPpm: Double = 1.42,
-    val cumulativeConcentrationPpm: Double = 0.34,
-    val dosePpmHr: Double = 5.8,
-    val twaPpm: Double = 0.72,
-    val darkeningPercent: Double = 34.0,
-    val e0: Double = 0.91,
-    val verdict: String = "WITHIN LIMITS",
-    val level: String = "LOW",
-    val lastCloudSync: String = "12 NOV 2024 - 14:22:04",
+    val refinery: String? = null,
+    val unit: String? = null,
+    val zone: String? = null,
+    val timestamp: String = "",
+    val peakIntensityPpm: Double? = null,
+    val cumulativeConcentrationPpm: Double? = null,
+    val dosePpmHr: Double? = null,
+    val twaPpm: Double? = null,
+    val deltaLStar: Double? = null,
+    val deltaE00: Double? = null,
+    val verdict: String? = null,
+    val level: String? = null,
+    val lastCloudSync: String? = null,
     val isMock: Boolean = true,
     val scanState: ScanState = ScanState.SUCCESS,
     val errorMessage: String? = null
@@ -66,8 +84,8 @@ data class RefineryZone(
     val zoneId: String,
     val unitName: String,
     val sector: String,
-    val status: ZoneStatus,
-    val cumulativePpm: Double,
+    val status: DemoExposureStatus,
+    val cumulativeDosePpmHr: Double,
     val oneHrPeakPpm: Double,
     val zoneAveragePpm: Double,
     val uptimePercent: Double,

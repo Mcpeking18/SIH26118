@@ -44,11 +44,20 @@ class ScannerReticleView @JvmOverloads constructor(
         letterSpacing = 0.15f
     }
 
+
     private val centerLaserPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#33EF4444")
         strokeWidth = 2f
         style = Paint.Style.STROKE
     }
+
+    private val badgeBitmap by lazy {
+        val options = android.graphics.BitmapFactory.Options()
+        android.graphics.BitmapFactory.decodeResource(context.resources, com.mrpl.wristband.R.drawable.img_badge_reference, options)
+    }
+
+    private val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
 
     private val targetRect = RectF()
 
@@ -59,7 +68,7 @@ class ScannerReticleView @JvmOverloads constructor(
         val h = height.toFloat()
 
         val boxWidth = w * 0.78f
-        val boxHeight = boxWidth * 1.15f
+        val boxHeight = boxWidth
 
         val left = (w - boxWidth) / 2f
         val top = (h - boxHeight) / 2.2f
@@ -75,6 +84,15 @@ class ScannerReticleView @JvmOverloads constructor(
 
         // Draw boundary box
         canvas.drawRect(targetRect, boxBorderPaint)
+
+        // Draw temporary badge reference overlay inside the box
+        badgeBitmap?.let { bmp ->
+            val srcRect = android.graphics.Rect(0, 0, bmp.width, bmp.height)
+            // Draw it slightly smaller than the bounding box to fit inside the corners nicely
+            val pad = 20f
+            val dstRect = android.graphics.RectF(left + pad, top + pad, right - pad, bottom - pad)
+            canvas.drawBitmap(bmp, srcRect, dstRect, badgePaint)
+        }
 
         // Draw corner brackets (length ~ 40dp)
         val cornerLen = 50f

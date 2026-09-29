@@ -74,19 +74,19 @@ object DosimetryBridge {
 
                 return ScanUiResult(
                     wristbandId = wristbandIdHint,
-                    refinery = "ABC Refinery",
-                    unit = "Hydrodesulfurization Unit",
-                    zone = "HDS-04",
+                    refinery = null,
+                    unit = null,
+                    zone = null,
                     timestamp = now,
-                    peakIntensityPpm = dResult.dosePpmHr,
-                    cumulativeConcentrationPpm = dResult.dosePpmHr,
+                    peakIntensityPpm = null,
+                    cumulativeConcentrationPpm = null,
                     dosePpmHr = dResult.dosePpmHr,
                     twaPpm = dResult.twaPpm,
-                    darkeningPercent = deltaL * 100,
-                    e0 = dResult.deltaE00,
+                    deltaLStar = normalizedResult.deltaLStar,
+                    deltaE00 = normalizedResult.deltaE00,
                     verdict = dResult.verdict.name,
-                    level = if(dResult.verdict.name == "SAFE" || dResult.verdict.name == "NORMAL") "LOW" else "CRITICAL",
-                    lastCloudSync = now,
+                    level = null,
+                    lastCloudSync = null,
                     isMock = false
                 )
             }
