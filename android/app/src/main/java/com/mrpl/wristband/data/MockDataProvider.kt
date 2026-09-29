@@ -4,7 +4,7 @@ object MockDataProvider {
 
     val defaultScanResult = ScanUiResult(
         wristbandId = "H2S-G4-9982",
-        refinery = "ABC Refinery (MOCK)",
+        refinery = "MRPL Mangalore (MOCK)",
         unit = "Mock Unit",
         zone = "MOCK-01",
         timestamp = "12 NOV 2024 - 14:22:04",
