@@ -68,7 +68,7 @@ class ScannerReticleView @JvmOverloads constructor(
         val h = height.toFloat()
 
         val boxWidth = w * 0.78f
-        val boxHeight = boxWidth * (30f / 40f)
+        val boxHeight = boxWidth * (40f / 30f)
 
         val left = (w - boxWidth) / 2f
         val top = (h - boxHeight) / 2.2f

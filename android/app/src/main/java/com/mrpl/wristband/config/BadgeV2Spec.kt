@@ -24,11 +24,11 @@ data class Patch(
 }
 
 data class BadgeV2Spec(
-    val widthMm: Double = 40.0,
-    val heightMm: Double = 30.0,
+    val widthMm: Double = 30.0,
+    val heightMm: Double = 40.0,
     val pxPerMm: Double = 20.0,
-    val fiducialSizeMm: Double = 6.0,
-    val fiducialInsetMm: Double = 4.0
+    val fiducialSizeMm: Double = 10.0,
+    val fiducialInsetMm: Double = 5.0
 ) {
     val widthPx: Int get() = (widthMm * pxPerMm).toInt()
     val heightPx: Int get() = (heightMm * pxPerMm).toInt()
@@ -36,13 +36,15 @@ data class BadgeV2Spec(
     val markerIds: IntArray = intArrayOf(0, 1, 2, 3)
 
     fun markerCentresMm(): Array<DoubleArray> {
-        val insetX = fiducialInsetMm
-        val insetY = fiducialInsetMm
+        val cx1 = 5.0
+        val cx2 = 25.0
+        val cy1 = 5.0
+        val cy2 = 35.0
         return arrayOf(
-            doubleArrayOf(insetX, insetY), // TL (0)
-            doubleArrayOf(widthMm - insetX, insetY), // TR (1)
-            doubleArrayOf(widthMm - insetX, heightMm - insetY), // BR (2)
-            doubleArrayOf(insetX, heightMm - insetY) // BL (3)
+            doubleArrayOf(cx1, cy1), // TL (0)
+            doubleArrayOf(cx2, cy1), // TR (1)
+            doubleArrayOf(cx2, cy2), // BR (2)
+            doubleArrayOf(cx1, cy2)  // BL (3)
         )
     }
 
@@ -61,21 +63,37 @@ data class BadgeV2Spec(
         }
     }
 
-    // 4 cols x 3 rows. Swatches ~ 8 x 4.5 mm
     fun patchRectsMm(): Array<Array<Double>> {
-        val cols = 4
-        val rows = 3
-        val w = 8.0
-        val h = 4.5
-        val startX = (widthMm - (cols * w)) / 2.0
-        val startY = 8.0
-        val rects = mutableListOf<Array<Double>>()
-        for (r in 0 until rows) {
-            for (c in 0 until cols) {
-                rects.add(arrayOf(startX + c * w, startY + r * h, w, h))
-            }
-        }
-        return rects.toTypedArray()
+        // All patches are 4.0 x 4.0 squares
+        val patchSize = 4.0
+
+        // Top arm (P1, P2) - extending rightward
+        val topY = 5.0
+        val p1 = arrayOf(10.5, topY, patchSize, patchSize)
+        val p2 = arrayOf(15.5, topY, patchSize, patchSize)
+
+        // Right arm (P3, P4, P5, P6) - extending downward
+        val sideGap = 0.6
+        val rightX = 21.0
+        val startY = 11.1
+        val p3 = arrayOf(rightX, startY, patchSize, patchSize)
+        val p4 = arrayOf(rightX, startY + patchSize + sideGap, patchSize, patchSize)
+        val p5 = arrayOf(rightX, startY + 2*(patchSize + sideGap), patchSize, patchSize)
+        val p6 = arrayOf(rightX, startY + 3*(patchSize + sideGap), patchSize, patchSize)
+
+        // Bottom arm (P7, P8) - extending leftward
+        val botY = 31.0
+        val p7 = arrayOf(15.5, botY, patchSize, patchSize) // Right
+        val p8 = arrayOf(10.5, botY, patchSize, patchSize) // Left
+
+        // Left arm (P9, P10, P11, P12) - extending upward
+        val leftX = 5.0
+        val p9 = arrayOf(leftX, startY + 3*(patchSize + sideGap), patchSize, patchSize)  // Bottom
+        val p10 = arrayOf(leftX, startY + 2*(patchSize + sideGap), patchSize, patchSize)
+        val p11 = arrayOf(leftX, startY + patchSize + sideGap, patchSize, patchSize)
+        val p12 = arrayOf(leftX, startY, patchSize, patchSize)                       // Top
+
+        return arrayOf(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12)
     }
 
     fun patchCentresMm(): Array<DoubleArray> {
@@ -86,12 +104,11 @@ data class BadgeV2Spec(
         }
     }
 
-    // Sensing region in bottom center
     fun sensingRegionMm(): Array<Double> {
-        val w = 12.0
-        val h = 6.0
-        val cx = widthMm / 2.0
-        val cy = heightMm - fiducialInsetMm - h/2.0
+        val w = 10.0
+        val h = 20.0
+        val cx = 15.0
+        val cy = 20.0
         return arrayOf(cx - w/2.0, cy - h/2.0, w, h)
     }
 
