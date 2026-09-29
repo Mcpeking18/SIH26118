@@ -86,7 +86,11 @@ class ScannerReticleView @JvmOverloads constructor(
         canvas.drawRect(targetRect, boxBorderPaint)
 
         // Draw temporary badge reference overlay inside the box
-        
+        if (badgeBitmap != null) {
+            badgePaint.alpha = 100 // Semi-transparent
+            val src = android.graphics.Rect(0, 0, badgeBitmap!!.width, badgeBitmap!!.height)
+            canvas.drawBitmap(badgeBitmap!!, src, targetRect, badgePaint)
+        }
 
         // Draw corner brackets (length ~ 40dp)
         val cornerLen = 50f
