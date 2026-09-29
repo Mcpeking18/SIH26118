@@ -67,7 +67,7 @@ class ScannerReticleView @JvmOverloads constructor(
         val w = width.toFloat()
         val h = height.toFloat()
 
-        val boxWidth = w * 0.78f
+        val boxWidth = w * 0.60f
         val boxHeight = boxWidth * (40f / 30f)
 
         val left = (w - boxWidth) / 2f
@@ -87,7 +87,7 @@ class ScannerReticleView @JvmOverloads constructor(
 
         // Draw temporary badge reference overlay inside the box
         if (badgeBitmap != null) {
-            badgePaint.alpha = 100 // Semi-transparent
+            badgePaint.alpha = 40 // More transparent ghost
             val src = android.graphics.Rect(0, 0, badgeBitmap!!.width, badgeBitmap!!.height)
             canvas.drawBitmap(badgeBitmap!!, src, targetRect, badgePaint)
         }
