@@ -1,7 +1,7 @@
 package com.mrpl.wristband.cv
 
 import com.mrpl.wristband.color.Colorimetry
-import com.mrpl.wristband.config.WristbandSpec
+import com.mrpl.wristband.config.BadgeV2Spec
 import org.opencv.core.Mat
 import org.opencv.core.Point
 import org.opencv.imgproc.Imgproc
@@ -173,41 +173,56 @@ object Sampler {
         )
     }
 
-    fun sampleBadge(
+        fun sampleBadge(
         warpedBgr: Mat,
-        spec: WristbandSpec = WristbandSpec.BADGE,
+        spec: BadgeV2Spec = BadgeV2Spec.BADGE,
         trim: Double = 0.20,
         maxClipFraction: Double = 0.15,
         maxPadCvPercent: Double = 25.0
     ): BadgeSamples {
-        val n = spec.canonicalPx
-        require(warpedBgr.rows() == n && warpedBgr.cols() == n) {
-            "expected a ${n}x${n} rectified image, got ${warpedBgr.rows()}x${warpedBgr.cols()}"
+        val wPx = spec.widthPx
+        val hPx = spec.heightPx
+        require(warpedBgr.cols() == wPx && warpedBgr.rows() == hPx) {
+            "expected a ${wPx}x${hPx} rectified image, got ${warpedBgr.cols()}x${warpedBgr.rows()}"
         }
 
         val out = BadgeSamples()
-        val centrePx = spec.mmToPx(arrayOf(spec.centreMm))[0]
-        val padRPx = spec.mmToPx(arrayOf(doubleArrayOf(spec.padDiameterMm / 2.0)))[0][0] * spec.padSampleFraction
-        out.pad = sampleRegion(warpedBgr, discMask(n, centrePx, padRPx), "PAD", trim)
+        
+        val s = spec.sensingRegionMm()
+        val sPx = doubleArrayOf(s[0] * spec.pxPerMm, s[1] * spec.pxPerMm, s[2] * spec.pxPerMm, s[3] * spec.pxPerMm)
+        val marginX = sPx[2] * 0.15
+        val marginY = sPx[3] * 0.15
+        val m = Mat.zeros(hPx, wPx, org.opencv.core.CvType.CV_8UC1)
+        Imgproc.rectangle(
+            m,
+            Point(sPx[0] + marginX, sPx[1] + marginY),
+            Point(sPx[0] + sPx[2] - marginX, sPx[1] + sPx[3] - marginY),
+            org.opencv.core.Scalar(255.0),
+            -1
+        )
+        out.pad = sampleRegion(warpedBgr, m, "PAD", trim)
 
-        val patchSide = spec.mmToPx(arrayOf(doubleArrayOf(spec.patchMm)))[0][0] * spec.patchSampleFraction
-        val patchNames = WristbandSpec.PATCHES.map { it.name }
-        val patchCentres = spec.mmToPx(spec.patchCentresMm())
+        val patchRects = spec.patchRectsMm()
+        val patchNames = BadgeV2Spec.PATCHES.map { it.name }
         
         for (i in patchNames.indices) {
-            val m = squareMask(n, patchCentres[i], patchSide)
-            out.patches.add(sampleRegion(warpedBgr, m, patchNames[i], trim))
+            val pr = patchRects[i]
+            val prPx = doubleArrayOf(pr[0] * spec.pxPerMm, pr[1] * spec.pxPerMm, pr[2] * spec.pxPerMm, pr[3] * spec.pxPerMm)
+            val pmX = prPx[2] * 0.15
+            val pmY = prPx[3] * 0.15
+            val pm = Mat.zeros(hPx, wPx, org.opencv.core.CvType.CV_8UC1)
+            Imgproc.rectangle(
+                pm,
+                Point(prPx[0] + pmX, prPx[1] + pmY),
+                Point(prPx[0] + prPx[2] - pmX, prPx[1] + prPx[3] - pmY),
+                org.opencv.core.Scalar(255.0),
+                -1
+            )
+            out.patches.add(sampleRegion(warpedBgr, pm, patchNames[i], trim))
         }
 
-        val whiteProbes = spec.whiteFieldProbesMm()
-        for (i in whiteProbes.indices) {
-            val p = whiteProbes[i]
-            val rPx = spec.mmToPx(arrayOf(doubleArrayOf(p[2] / 2.0)))[0][0] * 0.85
-            val cPx = spec.mmToPx(arrayOf(doubleArrayOf(p[0], p[1])))[0]
-            val m = discMask(n, cPx, rPx)
-            out.whiteField.add(sampleRegion(warpedBgr, m, "W$i", 0.30))
-            out.whiteFieldXy.add(doubleArrayOf(p[0], p[1]))
-        }
+        out.whiteField.clear()
+        out.whiteFieldXy.clear()
 
         val pad = out.pad!!
         if (pad.clipFraction > maxClipFraction) {
@@ -226,9 +241,8 @@ object Sampler {
         }
 
         val neutralIndices = intArrayOf(4, 10, 6) // GREY_50, GREY_20, BLACK
-        // In python: ramp = sorted(NEUTRAL_INDICES, key=lambda i: -luma)
         val sortedRamp = neutralIndices.sortedByDescending { idx ->
-            val srgb = WristbandSpec.PATCHES[idx].srgb.map { it.toDouble() }.toDoubleArray()
+            val srgb = BadgeV2Spec.PATCHES[idx].srgb.map { it.toDouble() }.toDoubleArray()
             val linear = Colorimetry.srgbToLinear(srgb)
             linear[0] * Colorimetry.LUMA[0] + linear[1] * Colorimetry.LUMA[1] + linear[2] * Colorimetry.LUMA[2]
         }

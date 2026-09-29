@@ -1,6 +1,6 @@
 package com.mrpl.wristband.cv
 
-import com.mrpl.wristband.config.WristbandSpec
+import com.mrpl.wristband.config.BadgeV2Spec
 import org.opencv.calib3d.Calib3d
 import org.opencv.core.Core
 import org.opencv.core.CvType
@@ -29,7 +29,7 @@ data class DetectionResult(
         get() = foundIds.size
 }
 
-class Detector(private val spec: WristbandSpec = WristbandSpec()) {
+class Detector(private val spec: BadgeV2Spec = BadgeV2Spec()) {
 
     private val dictionary = Objdetect.getPredefinedDictionary(Objdetect.DICT_4X4_50)
     private val params = tunedParams()
@@ -128,15 +128,16 @@ class Detector(private val spec: WristbandSpec = WristbandSpec()) {
     }
 
     private fun warpToCanonical(image: Mat, H: Mat): Mat {
-        val n = spec.canonicalPx
+        val wPx = spec.widthPx
+        val hPx = spec.heightPx
         val h = image.rows()
         val w = image.cols()
-        val srcSpan = max(h, w)
-        val flags = if (srcSpan > n * 1.2) Imgproc.INTER_AREA else Imgproc.INTER_LINEAR
+        val srcSpan = max(hPx, wPx)
+        val flags = if (srcSpan > max(h, w) * 1.2) Imgproc.INTER_AREA else Imgproc.INTER_LINEAR
 
         val warped = Mat()
         Imgproc.warpPerspective(
-            image, warped, H, Size(n.toDouble(), n.toDouble()),
+            image, warped, H, Size(wPx.toDouble(), hPx.toDouble()),
             flags, Core.BORDER_CONSTANT, org.opencv.core.Scalar(0.0, 0.0, 0.0)
         )
         return warped

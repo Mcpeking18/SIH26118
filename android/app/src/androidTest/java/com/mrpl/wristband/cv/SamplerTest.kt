@@ -1,7 +1,7 @@
 package com.mrpl.wristband.cv
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.mrpl.wristband.config.WristbandSpec
+import com.mrpl.wristband.config.BadgeV2Spec
 import com.mrpl.wristband.color.Colorimetry
 import org.junit.Assert.*
 import org.junit.Before
@@ -26,8 +26,8 @@ class SamplerTest {
 
     @Test
     fun testSamplerExtractsLinearRGB() {
-        val spec = WristbandSpec.BADGE
-        val n = spec.canonicalPx
+        val spec = BadgeV2Spec.BADGE
+        val n = spec.widthPx
         val frame = Mat(n, n, CvType.CV_8UC3, Scalar(255.0, 255.0, 255.0)) // White frame
 
         // Fill pad with a specific color: e.g., R=100, G=150, B=200
