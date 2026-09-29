@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.content.Context
@@ -151,7 +152,12 @@ class ScanHomeFragment : Fragment() {
                 object : ImageCapture.OnImageCapturedCallback() {
                     @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
                     override fun onCaptureSuccess(image: ImageProxy) {
-                        val bitmap = image.toBitmap()
+                        var bitmap = image.toBitmap()
+                        val rotationDegrees = image.imageInfo.rotationDegrees
+                        if (rotationDegrees != 0) {
+                            val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
+                            bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+                        }
                         image.close()
                         runScanPipeline(bitmap, "H2S-G4-9982")
                     }
@@ -174,16 +180,29 @@ class ScanHomeFragment : Fragment() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext())
         cameraProviderFuture.addListener({
             val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
-            val preview = Preview.Builder().build().also {
-                it.setSurfaceProvider(viewFinder.surfaceProvider)
+
+            val displayRotation = viewFinder.display.rotation
+            val rotation = when (displayRotation) {
+                0 -> 0
+                90 -> 90
+                180 -> 180
+                270 -> 270
+                else -> 0
             }
+
+            val preview = Preview.Builder()
+                .setTargetRotation(rotation)
+                .build()
+                .also { it.setSurfaceProvider(viewFinder.surfaceProvider) }
 
             imageCapture = ImageCapture.Builder()
                 .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                .setTargetRotation(rotation)
                 .build()
 
             val imageAnalyzer = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .setTargetRotation(rotation)
                 .build()
                 .also {
                     it.setAnalyzer(cameraExecutor) { imageProxy ->
@@ -217,7 +236,16 @@ class ScanHomeFragment : Fragment() {
         lastAnalysisTime = currentTime
 
         try {
-            val bitmap = imageProxy.toBitmap()
+            var bitmap = imageProxy.toBitmap()
+            
+            // Apply rotation from ImageProxy metadata as a safety net
+            // Target rotation on use cases should align frames, but this handles any mismatch
+            val rotationDegrees = imageProxy.imageInfo.rotationDegrees
+            if (rotationDegrees != 0) {
+                val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
+                bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            }
+            
             val rgbaMat = Mat()
             Utils.bitmapToMat(bitmap, rgbaMat)
             val mat = Mat()
@@ -236,6 +264,7 @@ class ScanHomeFragment : Fragment() {
                     
                     if (elapsed >= 5000) {
                         isProcessingCapture = true
+                        stabilizationStartTime = 0L
                         activity?.runOnUiThread {
                             tvStandby.text = "● CAPTURING..."
                             tvStandby.setTextColor(requireContext().getColor(R.color.h2s_blue_light))
@@ -245,7 +274,12 @@ class ScanHomeFragment : Fragment() {
                                 object : ImageCapture.OnImageCapturedCallback() {
                                     @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
                                     override fun onCaptureSuccess(image: ImageProxy) {
-                                        val bmp = image.toBitmap()
+                                        var bmp = image.toBitmap()
+                                        val rotationDegrees = image.imageInfo.rotationDegrees
+                                        if (rotationDegrees != 0) {
+                                            val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
+                                            bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
+                                        }
                                         image.close()
                                         runScanPipeline(bmp, "H2S-G4-9982")
                                     }
@@ -323,14 +357,16 @@ class ScanHomeFragment : Fragment() {
                 val result = DosimetryBridge.processBitmap(bitmap, actualId)
                 activity?.runOnUiThread {
                     dialog.dismiss()
-                    isProcessingCapture = false
                     
                     if (result.scanState?.name == "PROCESSING_ERROR" || result.scanState?.name == "POOR_IMAGE_QUALITY" || result.errorMessage != null) {
                         // OpenCV failed, keep scanner open and allow retry
                         stabilizationStartTime = 0L
+                        isProcessingCapture = false
                         Toast.makeText(requireContext(), "Wristband could not be detected/aligned. Please try again.", Toast.LENGTH_LONG).show()
                     } else {
-                        // Success, open result activity
+                        // Success, open result activity. 
+                        // Do NOT set isProcessingCapture = false here, leave it true to block auto-capture 
+                        // until onResume() is called when returning to this screen.
                         HistoryManager.saveRecord(requireContext(), result)
                         val intent = Intent(requireActivity(), ExposureResultActivity::class.java)
                         intent.putExtra("SCAN_RESULT", result)

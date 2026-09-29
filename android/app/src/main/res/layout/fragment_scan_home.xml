@@ -39,7 +39,7 @@
         <com.mrpl.wristband.ui.view.ScannerReticleView
             android:id="@+id/scannerReticle"
             android:layout_width="match_parent"
-            android:layout_height="572dp" />
+            android:layout_height="538dp"/>
 
         <!-- Instruction Overlay -->
         <LinearLayout

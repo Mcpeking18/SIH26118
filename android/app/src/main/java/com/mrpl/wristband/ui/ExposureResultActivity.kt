@@ -55,7 +55,10 @@ class ExposureResultActivity : AppCompatActivity() {
             if (dose != null) {
                 val status = com.mrpl.wristband.data.DemoExposureStatus.fromDose(dose)
                 tvClassification.text = status.label
-                tvClassification.setTextColor(android.graphics.Color.parseColor(status.colorHex))
+                val parsedColor = android.graphics.Color.parseColor(status.colorHex)
+                tvClassification.setTextColor(parsedColor)
+                tvDose.setTextColor(parsedColor)
+                tvTwa.setTextColor(parsedColor)
             } else {
                 tvClassification.visibility = android.view.View.GONE
             }

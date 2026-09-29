@@ -1,7 +1,7 @@
 package com.mrpl.wristband.cv
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.mrpl.wristband.config.WristbandSpec
+import com.mrpl.wristband.config.BadgeV2Spec
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -22,7 +22,7 @@ class DetectorTest {
 
     @Test
     fun testRectifySyntheticImage() {
-        val spec = WristbandSpec()
+        val spec = BadgeV2Spec.BADGE
         val dict = Objdetect.getPredefinedDictionary(Objdetect.DICT_4X4_50)
         
         val frame = Mat(1000, 1000, CvType.CV_8UC1, Scalar(255.0))
@@ -32,7 +32,7 @@ class DetectorTest {
         
         for (i in spec.markerIds.indices) {
             val id = spec.markerIds[i]
-            val markerSizeMm = 4.5
+            val markerSizeMm = spec.fiducialSizeMm
             val sidePx = (markerSizeMm * scale).toInt()
             val markerImg = Mat()
             Objdetect.generateImageMarker(dict, id, sidePx, markerImg, 1)
@@ -56,7 +56,7 @@ class DetectorTest {
         assertTrue(res.reprojRmseMm < 0.35)
         
         assertNotNull(res.warped)
-        assertEquals(600, res.warped!!.cols())
-        assertEquals(600, res.warped!!.rows())
+        assertEquals(spec.widthPx, res.warped!!.cols())
+        assertEquals(spec.heightPx, res.warped!!.rows())
     }
 }

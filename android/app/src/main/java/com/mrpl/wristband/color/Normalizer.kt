@@ -4,7 +4,7 @@ import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
 import kotlin.math.*
-import com.mrpl.wristband.config.WristbandSpec
+import com.mrpl.wristband.config.BadgeV2Spec
 import com.mrpl.wristband.dosimetry.Dosimetry
 import com.mrpl.wristband.cv.BadgeSamples
 
@@ -142,17 +142,18 @@ object Normalizer {
         return mask
     }
 
-    private fun normXy(spec: WristbandSpec, ptsMm: Array<DoubleArray>): Array<DoubleArray> {
-        val cx = spec.centreMm[0]
-        val cy = spec.centreMm[1]
-        val half = spec.headMm / 2.0
+    private fun normXy(spec: BadgeV2Spec, ptsMm: Array<DoubleArray>): Array<DoubleArray> {
+        val cx = spec.widthMm / 2.0
+        val cy = spec.heightMm / 2.0
+        val halfX = spec.widthMm / 2.0
+        val halfY = spec.heightMm / 2.0
         return Array(ptsMm.size) { i ->
-            doubleArrayOf((ptsMm[i][0] - cx) / half, (ptsMm[i][1] - cy) / half)
+            doubleArrayOf((ptsMm[i][0] - cx) / halfX, (ptsMm[i][1] - cy) / halfY)
         }
     }
 
-    private fun patchXy(spec: WristbandSpec): Array<DoubleArray> = normXy(spec, spec.patchCentresMm())
-    private fun probeXy(spec: WristbandSpec): Array<DoubleArray> = normXy(spec, spec.whiteFieldProbesMm())
+    private fun patchXy(spec: BadgeV2Spec): Array<DoubleArray> = normXy(spec, spec.patchCentresMm())
+    private fun probeXy(spec: BadgeV2Spec): Array<DoubleArray> = emptyArray()
 
     private fun design(xy: Array<DoubleArray>, kind: String): Mat {
         val cols = if (kind == "quad") 6 else 3
@@ -376,7 +377,7 @@ object Normalizer {
 
     fun normalizeBadge(
         samples: BadgeSamples,
-        spec: WristbandSpec = WristbandSpec.BADGE,
+        spec: BadgeV2Spec = BadgeV2Spec.BADGE,
         referenceSrgb: Array<IntArray>? = null,
         mode: String = "root6",
         ridge: Double = 1e-4,
@@ -392,7 +393,7 @@ object Normalizer {
             return out
         }
 
-        val refSrgbSource = referenceSrgb ?: WristbandSpec.PATCHES.map { it.srgb }.toTypedArray()
+        val refSrgbSource = referenceSrgb ?: BadgeV2Spec.PATCHES.map { it.srgb }.toTypedArray()
         val refAll = Array(refSrgbSource.size) { i ->
             Colorimetry.srgbToLinear(DoubleArray(3) { j -> refSrgbSource[i][j].toDouble() })
         }
@@ -407,7 +408,7 @@ object Normalizer {
         var nUsable = 0
         val dropped = mutableListOf<String>()
         for (i in usable.indices) {
-            if (usable[i]) nUsable++ else dropped.add(WristbandSpec.PATCHES[i].name)
+            if (usable[i]) nUsable++ else dropped.add(BadgeV2Spec.PATCHES[i].name)
         }
         if (nUsable < obsRaw.size) {
             out.warnings.add("dropped unusable patches: ${dropped.joinToString(", ")}")
@@ -454,7 +455,7 @@ object Normalizer {
                 if (nUsable >= 5) {
                     val achrom = mutableListOf<Int>()
                     for (i in usable.indices) {
-                        val role = WristbandSpec.PATCHES[i].role
+                        val role = BadgeV2Spec.PATCHES[i].role
                         if (usable[i] && (role == "neutral" || role == "substrate")) {
                             achrom.add(i)
                         }
@@ -610,7 +611,7 @@ object Normalizer {
             if (wlSum > 1e-9) out.locusLBias = wlSumL / wlSum
 
             val names = mutableListOf<String>()
-            for (i in usable.indices) if (usable[i]) names.add(WristbandSpec.PATCHES[i].name)
+            for (i in usable.indices) if (usable[i]) names.add(BadgeV2Spec.PATCHES[i].name)
             out.usedPatches = names
 
             for (i in names.indices) {
@@ -624,7 +625,7 @@ object Normalizer {
         } else {
             val neutrals = mutableListOf<Int>()
             for (i in usable.indices) {
-                if (usable[i] && WristbandSpec.PATCHES[i].role == "neutral") neutrals.add(i)
+                if (usable[i] && BadgeV2Spec.PATCHES[i].role == "neutral") neutrals.add(i)
             }
             if (neutrals.isEmpty()) {
                 out.reason = "only ${nUsable} usable reference patches and no readable neutral - cannot correct illumination; reject scan"
@@ -642,7 +643,7 @@ object Normalizer {
             
             padCorrected = doubleArrayOf(padLinearRaw[0]*gain[0], padLinearRaw[1]*gain[1], padLinearRaw[2]*gain[2])
             patchesCorrected = Array(obsAll.size) { i -> doubleArrayOf(obsAll[i][0]*gain[0], obsAll[i][1]*gain[1], obsAll[i][2]*gain[2]) }
-            out.usedPatches = neutrals.map { WristbandSpec.PATCHES[it].name }
+            out.usedPatches = neutrals.map { BadgeV2Spec.PATCHES[it].name }
         }
 
         out.padLinear = padCorrected
@@ -650,7 +651,7 @@ object Normalizer {
 
         val subs = mutableListOf<Int>()
         for (i in usable.indices) {
-            if (usable[i] && WristbandSpec.PATCHES[i].role == "substrate") subs.add(i)
+            if (usable[i] && BadgeV2Spec.PATCHES[i].role == "substrate") subs.add(i)
         }
 
         if (baselineMode == "onbadge" && subs.isNotEmpty()) {
@@ -661,10 +662,10 @@ object Normalizer {
                 sum2 += patchesCorrected[idx][2]
             }
             out.baselineLab = Colorimetry.xyzToLab(Colorimetry.linearRgbToXyz(doubleArrayOf(sum0/subs.size, sum1/subs.size, sum2/subs.size)))
-            out.baselineSource = "onbadge:" + subs.map { WristbandSpec.PATCHES[it].name }.joinToString("+")
+            out.baselineSource = "onbadge:" + subs.map { BadgeV2Spec.PATCHES[it].name }.joinToString("+")
             
             var totalSubs = 0
-            for (p in WristbandSpec.PATCHES) if (p.role == "substrate") totalSubs++
+            for (p in BadgeV2Spec.PATCHES) if (p.role == "substrate") totalSubs++
             if (subs.size < totalSubs) {
                 out.warnings.add("only ${subs.size} of ${totalSubs} substrate patches usable; the opposite-pair cancellation of illumination gradients is lost, so the reading carries whatever ramp the flat field did not remove")
             }
