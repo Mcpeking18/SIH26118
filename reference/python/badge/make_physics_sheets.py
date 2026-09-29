@@ -28,7 +28,7 @@ def draw_badge(img, x_offset_px, y_offset_px, px_per_mm, pad_color_bgr):
     cv2.line(img, (x_offset_px + w_px, y_offset_px + h_px), (x_offset_px + w_px, y_offset_px + h_px + crop_len), crop_color, thick)
 
     aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
-    fid_size = int(10.0 * px_per_mm)
+    fid_size = int(8.0 * px_per_mm)
     inset = int(5.0 * px_per_mm)
     centers = [
         (inset, inset), (w_px - inset, inset),

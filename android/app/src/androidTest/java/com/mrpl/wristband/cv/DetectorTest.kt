@@ -32,7 +32,7 @@ class DetectorTest {
         
         for (i in spec.markerIds.indices) {
             val id = spec.markerIds[i]
-            val markerSizeMm = 4.5
+            val markerSizeMm = spec.fiducialSizeMm
             val sidePx = (markerSizeMm * scale).toInt()
             val markerImg = Mat()
             Objdetect.generateImageMarker(dict, id, sidePx, markerImg, 1)
@@ -56,7 +56,7 @@ class DetectorTest {
         assertTrue(res.reprojRmseMm < 0.35)
         
         assertNotNull(res.warped)
-        assertEquals(600, res.warped!!.cols())
-        assertEquals(600, res.warped!!.rows())
+        assertEquals(spec.widthPx, res.warped!!.cols())
+        assertEquals(spec.heightPx, res.warped!!.rows())
     }
 }

@@ -39,7 +39,7 @@ cv2.line(img, (x_off + w_px, y_off + h_px), (x_off + w_px, y_off + h_px + crop_l
 
 
 aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
-fid_size = int(10.0 * px_per_mm)
+fid_size = int(8.0 * px_per_mm)
 inset = int(5.0 * px_per_mm)
 centers = [
     (inset, inset),

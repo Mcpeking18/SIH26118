@@ -27,7 +27,7 @@ data class BadgeV2Spec(
     val widthMm: Double = 30.0,
     val heightMm: Double = 40.0,
     val pxPerMm: Double = 20.0,
-    val fiducialSizeMm: Double = 10.0,
+    val fiducialSizeMm: Double = 8.0,
     val fiducialInsetMm: Double = 5.0
 ) {
     val widthPx: Int get() = (widthMm * pxPerMm).toInt()
