@@ -212,6 +212,7 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 "use strict";
 
@@ -225,6 +226,7 @@ const REFRESH_MS = 30000;
 const BAND_COLOUR = {critical:'#c62828', warning:'#ef6c00', elevated:'#f9a825',
                      safe:'#2e7d32', invalid:'#616161'};
 let hours = 8, autoRefresh = true, timer = null, payload = null;
+let trendChartInstance = null;
 
 const $ = id => document.getElementById(id);
 const fmt = (v,n=2) => (v===null||v===undefined||!isFinite(v)) ? '—' : Number(v).toFixed(n);
@@ -527,6 +529,13 @@ function drawSide(d){
 
   const panels = [];
 
+  // ---- trend chart ----------------------------------------------------
+  panels.push(`<section><h2>Exposure Trend</h2>
+    <div style="height:160px;width:100%;position:relative;margin-top:10px">
+      <canvas id="trendChart"></canvas>
+    </div>
+    </section>`);
+
   // ---- clusters -------------------------------------------------------
   const cl = d.clusters || [];
   panels.push(`<section><h2>Areas to look at (${cl.length})</h2>
@@ -611,6 +620,99 @@ function drawSide(d){
   });
   $('panels').querySelectorAll('tr[data-unit]').forEach(tr=>{
     tr.addEventListener('click', ()=> focusUnit(tr.dataset.unit));
+  });
+
+  drawTrendChart(d);
+}
+
+function drawTrendChart(d) {
+  if (!d.points || d.points.length === 0) return;
+  
+  // Group scans into 10 buckets across the current time window
+  const now = new Date();
+  const startTime = new Date(now.getTime() - hours * 3600 * 1000);
+  const buckets = 10;
+  const stepMs = (now.getTime() - startTime.getTime()) / buckets;
+  
+  const labels = [];
+  const safeData = Array(buckets).fill(0);
+  const warnData = Array(buckets).fill(0);
+  
+  for (let i=0; i<buckets; i++) {
+    const dTime = new Date(startTime.getTime() + i * stepMs);
+    labels.push(dTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
+  }
+  
+  d.points.forEach(p => {
+    if (!p.scanned_at) return;
+    const ptTime = new Date(p.scanned_at).getTime();
+    if (ptTime < startTime.getTime()) return;
+    const b = Math.floor((ptTime - startTime.getTime()) / stepMs);
+    if (b >= 0 && b < buckets) {
+      if (p.band === 'warning' || p.band === 'critical' || p.band === 'elevated') {
+        warnData[b]++;
+      } else if (p.band === 'safe') {
+        safeData[b]++;
+      }
+    }
+  });
+
+  const ctx = $('trendChart').getContext('2d');
+  if (trendChartInstance) {
+    trendChartInstance.destroy();
+  }
+  
+  Chart.defaults.color = '#9aa7b4';
+  Chart.defaults.font.family = 'system-ui, sans-serif';
+  
+  trendChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Safe',
+          data: safeData,
+          backgroundColor: BAND_COLOUR.safe,
+          stack: 'Stack 0',
+          barPercentage: 0.6
+        },
+        {
+          label: 'Elevated / Warning',
+          data: warnData,
+          backgroundColor: BAND_COLOUR.warning,
+          stack: 'Stack 0',
+          barPercentage: 0.6
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(20, 26, 32, 0.95)',
+          titleColor: '#eef2f6',
+          bodyColor: '#cfdae4',
+          borderColor: '#28323c',
+          borderWidth: 1
+        }
+      },
+      scales: {
+        x: { 
+          stacked: true, 
+          grid: { display: false, drawBorder: false },
+          ticks: { maxTicksLimit: 5, maxRotation: 0 }
+        },
+        y: { 
+          stacked: true, 
+          grid: { color: '#28323c', drawBorder: false },
+          beginAtZero: true,
+          ticks: { stepSize: 1 }
+        }
+      }
+    }
   });
 }
 
