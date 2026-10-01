@@ -134,6 +134,89 @@ async def post_clear():
     return _reply(service.clear_demo())
 
 
+from pydantic import BaseModel, Field
+from typing import List, Optional
+
+class MeasurementCreate(BaseModel):
+    worker_id: str
+    worker_name: Optional[str] = None
+    zone: Optional[str] = None
+    timestamp: Optional[str] = None
+    dose_ppm_hr: float
+    twa_ppm: float
+    status: str
+
+class MeasurementResponse(BaseModel):
+    id: int
+    worker_id: str
+    worker_name: Optional[str] = None
+    zone: Optional[str] = None
+    timestamp: str
+    dose_ppm_hr: float
+    twa_ppm: float
+    status: str
+
+@app.post("/api/measurements", response_model=MeasurementResponse)
+async def create_measurement(m: MeasurementCreate):
+    from datetime import datetime, timezone
+    import sqlite3
+    ts = m.timestamp or datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    cur = service.store._conn.cursor()
+    cur.execute("""
+        INSERT INTO scans (
+            scanned_at, received_at, worker_id, worker_name, unit_code, 
+            ok, verdict, band, dose_ppm_hr, twa_ppm, result_json
+        ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, '{}')
+    """, (ts, ts, m.worker_id, m.worker_name, m.zone, m.status, m.status.lower(), m.dose_ppm_hr, m.twa_ppm))
+    service.store._conn.commit()
+    scan_id = cur.lastrowid
+    return MeasurementResponse(
+        id=scan_id, worker_id=m.worker_id, worker_name=m.worker_name, zone=m.zone, 
+        timestamp=ts, dose_ppm_hr=m.dose_ppm_hr, twa_ppm=m.twa_ppm, status=m.status
+    )
+
+@app.get("/api/measurements", response_model=List[MeasurementResponse])
+async def get_measurements(limit: int = 50):
+    cur = service.store._conn.cursor()
+    cur.execute("""
+        SELECT id, worker_id, worker_name, unit_code, scanned_at, dose_ppm_hr, twa_ppm, verdict 
+        FROM scans ORDER BY scanned_at DESC LIMIT ?
+    """, (limit,))
+    rows = cur.fetchall()
+    return [MeasurementResponse(
+        id=r['id'], worker_id=r['worker_id'], worker_name=r['worker_name'], zone=r['unit_code'],
+        timestamp=r['scanned_at'], dose_ppm_hr=r['dose_ppm_hr'] or 0.0, twa_ppm=r['twa_ppm'] or 0.0, status=r['verdict']
+    ) for r in rows]
+
+@app.get("/api/measurements/latest", response_model=Optional[MeasurementResponse])
+async def get_latest_measurement():
+    cur = service.store._conn.cursor()
+    cur.execute("""
+        SELECT id, worker_id, worker_name, unit_code, scanned_at, dose_ppm_hr, twa_ppm, verdict 
+        FROM scans ORDER BY scanned_at DESC LIMIT 1
+    """)
+    r = cur.fetchone()
+    if not r: return None
+    return MeasurementResponse(
+        id=r['id'], worker_id=r['worker_id'], worker_name=r['worker_name'], zone=r['unit_code'],
+        timestamp=r['scanned_at'], dose_ppm_hr=r['dose_ppm_hr'] or 0.0, twa_ppm=r['twa_ppm'] or 0.0, status=r['verdict']
+    )
+
+@app.get("/api/measurements/{id}", response_model=MeasurementResponse)
+async def get_measurement(id: int):
+    cur = service.store._conn.cursor()
+    cur.execute("""
+        SELECT id, worker_id, worker_name, unit_code, scanned_at, dose_ppm_hr, twa_ppm, verdict 
+        FROM scans WHERE id = ?
+    """, (id,))
+    r = cur.fetchone()
+    if not r: return JSONResponse(status_code=404, content={"detail": "Not Found"})
+    return MeasurementResponse(
+        id=r['id'], worker_id=r['worker_id'], worker_name=r['worker_name'], zone=r['unit_code'],
+        timestamp=r['scanned_at'], dose_ppm_hr=r['dose_ppm_hr'] or 0.0, twa_ppm=r['twa_ppm'] or 0.0, status=r['verdict']
+    )
+
+# ---- static
 # ---- static: the scanner and the dashboard --------------------------------
 # Mounted last so the API routes above take precedence over any same-named file.
 

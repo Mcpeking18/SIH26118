@@ -160,7 +160,7 @@
 <body>
 
 <div class="bar">
-  <h1>H₂S Exposure &amp; Risk<span>MRPL Refinery &middot; SIH26118</span></h1>
+  <h1>MRPL H2S EXPOSURE MONITORING<span>Factory / HSE Dashboard — DEMO / PROTOTYPE DATA</span></h1>
   <div class="seg" id="win">
     <button data-h="1">1 h</button>
     <button data-h="8" class="on">8 h</button>
@@ -527,7 +527,63 @@ function drawSide(d){
   $('kRead').style.color   = (st.read_rate !== null && st.read_rate < 0.9) ? '#ffab70' : '';
   $('kInvalid').textContent = `${st.n_invalid ?? 0} unreadable`;
 
+  
   const panels = [];
+  
+  if (d.latestMeasurement) {
+    const m = d.latestMeasurement;
+    const isWarn = m.status.toLowerCase() !== 'safe' && m.status.toLowerCase() !== 'normal';
+    panels.push(`<section style="background:var(--panel-2)">
+      <h2 style="color:var(--accent); font-weight:bold;">Latest Measurement</h2>
+      <div style="padding:10px 0; font-size:13px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px">
+          <span style="color:var(--ink-dim)">Worker:</span> <strong>${esc(m.worker_name || m.worker_id)}</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px">
+          <span style="color:var(--ink-dim)">Zone:</span> <span>${esc(m.zone || 'Unknown')}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px">
+          <span style="color:var(--ink-dim)">Time:</span> <span>${new Date(m.timestamp).toLocaleTimeString()}</span>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; background:var(--bg); padding:10px; border-radius:6px; border:1px solid var(--line);">
+          <div>
+            <div style="font-size:10px; color:var(--ink-dim); text-transform:uppercase">Cumul. Dose</div>
+            <div style="font-size:18px; font-weight:bold; font-family:var(--mono)">${fmt(m.dose_ppm_hr, 2)} <span style="font-size:11px; color:var(--ink-dim)">ppm·hr</span></div>
+          </div>
+          <div>
+            <div style="font-size:10px; color:var(--ink-dim); text-transform:uppercase">8-hr TWA</div>
+            <div style="font-size:18px; font-weight:bold; font-family:var(--mono); color:${isWarn ? 'var(--warning)' : 'var(--safe)'}">${fmt(m.twa_ppm, 2)} <span style="font-size:11px; color:var(--ink-dim)">ppm</span></div>
+          </div>
+        </div>
+      </div>
+    </section>`);
+  }
+
+  if (d.measurementHistory && d.measurementHistory.length > 0) {
+    panels.push(`<section>
+      <h2>Recent Measurements</h2>
+      <table style="width:100%; border-collapse:collapse; font-size:12px; margin-top:8px;">
+        <thead style="text-align:left; color:var(--ink-faint); border-bottom:1px solid var(--line)">
+          <tr>
+            <th style="padding-bottom:6px">Worker</th>
+            <th style="padding-bottom:6px">Dose</th>
+            <th style="padding-bottom:6px">TWA</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${d.measurementHistory.map(m => {
+            const isWarn = m.status.toLowerCase() !== 'safe' && m.status.toLowerCase() !== 'normal';
+            return `<tr style="border-bottom:1px solid var(--line)">
+              <td style="padding:6px 0">${esc(m.worker_name || m.worker_id)}</td>
+              <td style="padding:6px 0; font-family:var(--mono)">${fmt(m.dose_ppm_hr,1)}</td>
+              <td style="padding:6px 0; font-family:var(--mono); color:${isWarn?'var(--warning)':'var(--ink)'}">${fmt(m.twa_ppm,1)}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </section>`);
+  }
+
 
   // ---- trend chart ----------------------------------------------------
   panels.push(`<section><h2>Exposure Trend</h2>

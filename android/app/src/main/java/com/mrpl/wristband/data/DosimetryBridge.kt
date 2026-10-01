@@ -53,6 +53,16 @@ object DosimetryBridge {
                 
                 // Normalizer
                                 val normalizedResult = Normalizer.normalizeBadge(badgeSamples)
+                
+                android.util.Log.d("H2S_AUDIT", "--- CAMERA/COLOR PIPELINE AUDIT ---")
+                android.util.Log.d("H2S_AUDIT", "Warped Mat size: ${detection.warped?.cols()}x${detection.warped?.rows()}")
+                                android.util.Log.d("H2S_AUDIT", "Pad Corrected (RGB): ${normalizedResult.padLinear?.contentToString()}")
+                android.util.Log.d("H2S_AUDIT", "Pad Lab: ${normalizedResult.padLab?.contentToString()}")
+                android.util.Log.d("H2S_AUDIT", "Baseline Lab: ${normalizedResult.baselineLab?.contentToString()}")
+                android.util.Log.d("H2S_AUDIT", "CCM Mode used: ${normalizedResult.mode}")
+                android.util.Log.d("H2S_AUDIT", "Delta L*: ${normalizedResult.deltaLStar}")
+                android.util.Log.d("H2S_AUDIT", "Delta E00: ${normalizedResult.deltaE00}")
+                
                 if (normalizedResult.padLab == null) {
                     return ScanUiResult(
                         wristbandId = wristbandIdHint,
