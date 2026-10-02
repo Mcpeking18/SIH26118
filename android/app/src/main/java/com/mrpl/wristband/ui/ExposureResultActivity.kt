@@ -83,7 +83,7 @@ class ExposureResultActivity : AppCompatActivity() {
                     try {
                         // Edit this IP if you are testing on a real physical phone instead of emulator!
                         // For physical phone, find your laptop's IPv4 address (e.g., 192.168.x.x)
-                        val backendIp = "10.0.2.2" 
+                        val backendIp = "192.168.1.105" 
                         val url = java.net.URL("http://$backendIp:8000/api/measurements")
                         val conn = url.openConnection() as java.net.HttpURLConnection
                         conn.requestMethod = "POST"
