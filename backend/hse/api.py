@@ -19,14 +19,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .service import ScanService
+from .service import MeasurementService
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-DB_PATH = os.environ.get("H2S_DB", os.path.join(ROOT, "out", "hse_scans.db"))
-IMAGE_DIR = os.environ.get("H2S_IMAGES", os.path.join(ROOT, "out", "scan_images"))
+DB_PATH = os.environ.get("H2S_DB", os.path.join(ROOT, "out", "hse_measurements.db"))
+IMAGE_DIR = os.environ.get("H2S_IMAGES", os.path.join(ROOT, "out", "measurement_images"))
 
-service = ScanService(db_path=DB_PATH, image_dir=IMAGE_DIR)
+service = MeasurementService(db_path=DB_PATH, image_dir=IMAGE_DIR)
 
 app = FastAPI(
     title="SIH26118 - Passive Colorimetric H2S Exposure Dosimeter",
@@ -55,34 +55,7 @@ def _reply(pair):
     return JSONResponse(status_code=status, content=payload)
 
 
-@app.post("/scan")
-async def post_scan(
-    image: UploadFile = File(..., description="JPEG or PNG frame containing the badge"),
-    worker_id: str = Form("UNKNOWN"),
-    worker_name: Optional[str] = Form(None),
-    shift_id: Optional[str] = Form(None),
-    badge_serial: Optional[str] = Form(None),
-    lat: Optional[str] = Form(None),
-    lng: Optional[str] = Form(None),
-    accuracy_m: Optional[str] = Form(None),
-    shift_hours: Optional[str] = Form(None),
-    scanned_at: Optional[str] = Form(None),
-    device: Optional[str] = Form(None),
-    app_version: Optional[str] = Form(None),
-    client_scan_id: Optional[str] = Form(None),
-):
-    """Read one badge photograph.
 
-    Returns 200 with ``ok: false`` when the image could not be read into a defensible
-    number - that is a legitimate outcome carrying an operator hint, not a server error.
-    """
-    data = await image.read()
-    return _reply(service.scan(data, {
-        "worker_id": worker_id, "worker_name": worker_name, "shift_id": shift_id,
-        "badge_serial": badge_serial, "lat": lat, "lng": lng, "accuracy_m": accuracy_m,
-        "shift_hours": shift_hours, "scanned_at": scanned_at, "device": device,
-        "app_version": app_version, "client_scan_id": client_scan_id,
-    }))
 
 
 @app.get("/api/heatmap")
@@ -93,19 +66,7 @@ async def get_heatmap(hours: float = 24.0, nx: int = 48, ny: int = 48,
                                    "radius_m": radius_m, "power": power, "limit": limit}))
 
 
-@app.get("/api/scans")
-async def get_scans(since: Optional[str] = None, until: Optional[str] = None,
-                    worker_id: Optional[str] = None, band: Optional[str] = None,
-                    include_invalid: str = "1", limit: int = 500):
-    return _reply(service.scans({"since": since, "until": until, "worker_id": worker_id,
-                                 "band": band, "include_invalid": include_invalid,
-                                 "limit": limit}))
 
-
-@app.get("/api/scans/{scan_id}")
-async def get_scan(scan_id: int):
-    """The full audit record for one scan, including the complete engine result."""
-    return _reply(service.scan_detail(scan_id))
 
 
 @app.get("/api/plant")
@@ -125,7 +86,7 @@ async def get_health():
 
 @app.post("/api/demo/seed")
 async def post_seed(n: int = Query(60), hours: float = Query(12.0), seed: int = Query(7)):
-    """Write labelled synthetic scans so the dashboard has data without a badge to hand."""
+    """Write labelled synthetic measurements so the dashboard has data without a badge to hand."""
     return _reply(service.seed_demo({"n": n, "hours": hours, "seed": seed}))
 
 
@@ -141,20 +102,28 @@ class MeasurementCreate(BaseModel):
     worker_id: str
     worker_name: Optional[str] = None
     zone: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
     timestamp: Optional[str] = None
     dose_ppm_hr: float
     twa_ppm: float
     status: str
+    temperature_c: Optional[float] = None
+    humidity_rh: Optional[float] = None
 
 class MeasurementResponse(BaseModel):
     id: int
     worker_id: str
     worker_name: Optional[str] = None
     zone: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
     timestamp: str
     dose_ppm_hr: float
     twa_ppm: float
     status: str
+    temperature_c: Optional[float] = None
+    humidity_rh: Optional[float] = None
 
 @app.post("/api/measurements", response_model=MeasurementResponse)
 async def create_measurement(m: MeasurementCreate):
@@ -163,78 +132,78 @@ async def create_measurement(m: MeasurementCreate):
     ts = m.timestamp or datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     cur = service.store._conn.cursor()
     cur.execute("""
-        INSERT INTO scans (
-            scanned_at, received_at, worker_id, worker_name, unit_code, 
-            ok, verdict, band, dose_ppm_hr, twa_ppm, result_json
-        ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, '{}')
-    """, (ts, ts, m.worker_id, m.worker_name, m.zone, m.status, m.status.lower(), m.dose_ppm_hr, m.twa_ppm))
+        INSERT INTO measurements (
+            measured_at, received_at, worker_id, worker_name, unit_code, lat, lng,
+            ok, verdict, band, dose_ppm_hr, twa_ppm, temperature_c, humidity_rh
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
+    """, (ts, ts, m.worker_id, m.worker_name, m.zone, m.lat, m.lng, m.status, m.status.lower(), m.dose_ppm_hr, m.twa_ppm, m.temperature_c, m.humidity_rh))
     service.store._conn.commit()
-    scan_id = cur.lastrowid
+    measurement_id = cur.lastrowid
     return MeasurementResponse(
-        id=scan_id, worker_id=m.worker_id, worker_name=m.worker_name, zone=m.zone, 
-        timestamp=ts, dose_ppm_hr=m.dose_ppm_hr, twa_ppm=m.twa_ppm, status=m.status
+        id=measurement_id, worker_id=m.worker_id, worker_name=m.worker_name, zone=m.zone, 
+        lat=m.lat, lng=m.lng, timestamp=ts, dose_ppm_hr=m.dose_ppm_hr, twa_ppm=m.twa_ppm, status=m.status,
+        temperature_c=m.temperature_c, humidity_rh=m.humidity_rh
     )
 
 @app.get("/api/measurements", response_model=List[MeasurementResponse])
 async def get_measurements(limit: int = 50):
     cur = service.store._conn.cursor()
     cur.execute("""
-        SELECT id, worker_id, worker_name, unit_code, scanned_at, dose_ppm_hr, twa_ppm, verdict 
-        FROM scans ORDER BY scanned_at DESC LIMIT ?
+        SELECT id, worker_id, worker_name, unit_code, lat, lng, measured_at, dose_ppm_hr, twa_ppm, verdict, temperature_c, humidity_rh
+        FROM measurements ORDER BY measured_at DESC LIMIT ?
     """, (limit,))
     rows = cur.fetchall()
     return [MeasurementResponse(
         id=r['id'], worker_id=r['worker_id'], worker_name=r['worker_name'], zone=r['unit_code'],
-        timestamp=r['scanned_at'], dose_ppm_hr=r['dose_ppm_hr'] or 0.0, twa_ppm=r['twa_ppm'] or 0.0, status=r['verdict']
+        lat=r['lat'], lng=r['lng'],
+        timestamp=r['measured_at'], dose_ppm_hr=r['dose_ppm_hr'] or 0.0, twa_ppm=r['twa_ppm'] or 0.0, status=r['verdict'],
+        temperature_c=r['temperature_c'], humidity_rh=r['humidity_rh']
     ) for r in rows]
 
 @app.get("/api/measurements/latest", response_model=Optional[MeasurementResponse])
 async def get_latest_measurement():
     cur = service.store._conn.cursor()
     cur.execute("""
-        SELECT id, worker_id, worker_name, unit_code, scanned_at, dose_ppm_hr, twa_ppm, verdict 
-        FROM scans ORDER BY scanned_at DESC LIMIT 1
+        SELECT id, worker_id, worker_name, unit_code, lat, lng, measured_at, dose_ppm_hr, twa_ppm, verdict, temperature_c, humidity_rh
+        FROM measurements ORDER BY measured_at DESC LIMIT 1
     """)
     r = cur.fetchone()
     if not r: return None
     return MeasurementResponse(
         id=r['id'], worker_id=r['worker_id'], worker_name=r['worker_name'], zone=r['unit_code'],
-        timestamp=r['scanned_at'], dose_ppm_hr=r['dose_ppm_hr'] or 0.0, twa_ppm=r['twa_ppm'] or 0.0, status=r['verdict']
+        lat=r['lat'], lng=r['lng'],
+        timestamp=r['measured_at'], dose_ppm_hr=r['dose_ppm_hr'] or 0.0, twa_ppm=r['twa_ppm'] or 0.0, status=r['verdict'],
+        temperature_c=r['temperature_c'], humidity_rh=r['humidity_rh']
     )
 
 @app.get("/api/measurements/{id}", response_model=MeasurementResponse)
 async def get_measurement(id: int):
     cur = service.store._conn.cursor()
     cur.execute("""
-        SELECT id, worker_id, worker_name, unit_code, scanned_at, dose_ppm_hr, twa_ppm, verdict 
-        FROM scans WHERE id = ?
+        SELECT id, worker_id, worker_name, unit_code, lat, lng, measured_at, dose_ppm_hr, twa_ppm, verdict, temperature_c, humidity_rh
+        FROM measurements WHERE id = ?
     """, (id,))
     r = cur.fetchone()
     if not r: return JSONResponse(status_code=404, content={"detail": "Not Found"})
     return MeasurementResponse(
         id=r['id'], worker_id=r['worker_id'], worker_name=r['worker_name'], zone=r['unit_code'],
-        timestamp=r['scanned_at'], dose_ppm_hr=r['dose_ppm_hr'] or 0.0, twa_ppm=r['twa_ppm'] or 0.0, status=r['verdict']
+        lat=r['lat'], lng=r['lng'],
+        timestamp=r['measured_at'], dose_ppm_hr=r['dose_ppm_hr'] or 0.0, twa_ppm=r['twa_ppm'] or 0.0, status=r['verdict'],
+        temperature_c=r['temperature_c'], humidity_rh=r['humidity_rh']
     )
 
 # ---- static
 # ---- static: the scanner and the dashboard --------------------------------
 # Mounted last so the API routes above take precedence over any same-named file.
 
-WEBAPP = os.path.join(ROOT, "webapp")
 DASHBOARD = os.path.join(ROOT, "dashboard")
 
-if os.path.isdir(WEBAPP):
-    app.mount("/webapp", StaticFiles(directory=WEBAPP, html=True), name="webapp")
 if os.path.isdir(DASHBOARD):
     app.mount("/dashboard", StaticFiles(directory=DASHBOARD, html=True), name="dashboard")
 
 
 @app.get("/")
 async def index():
-    """Land on the scanner, since that is what a worker at the gate opens."""
-    page = os.path.join(WEBAPP, "index.html")
-    if os.path.exists(page):
-        return FileResponse(page)
-    return JSONResponse({"service": "sih26118", "endpoints": ["/scan", "/api/heatmap",
-                                                              "/api/scans", "/api/plant",
-                                                              "/api/health", "/docs"]})
+    """Redirect to the dashboard since the Android app is now the primary scanner."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/dashboard")

@@ -21,14 +21,10 @@ import os
 import random
 import uuid
 from datetime import datetime, timedelta, timezone
-
-import numpy as np
-
-from engine.pipeline import ScanConfig, scan_image
 from .core import MRPL, band_for, haversine_m, heatmap_payload
-from .store import ScanStore, utc_now_iso
+from .store import MeasurementStore, utc_now_iso
 
-__all__ = ["ScanService"]
+__all__ = ["MeasurementService"]
 
 _MAX_UPLOAD_BYTES = 12 * 1024 * 1024
 
@@ -43,13 +39,12 @@ def _num(v, default=None):
     return f if math.isfinite(f) else default
 
 
-class ScanService:
+class MeasurementService:
     """Holds the store, the scan configuration and the plant layout."""
 
-    def __init__(self, db_path: str = "hse_scans.db", image_dir: str = None,
-                 config: ScanConfig = None, keep_images: bool = True):
-        self.store = ScanStore(db_path, image_dir=image_dir)
-        self.config = config or ScanConfig()
+    def __init__(self, db_path: str = "hse_measurements.db", image_dir: str = None,
+                 keep_images: bool = True):
+        self.store = MeasurementStore(db_path, image_dir=image_dir)
         self.image_dir = image_dir
         # Images are kept by default. A colorimetric exposure record whose source photograph
         # was discarded cannot be re-examined if the reading is later disputed, and disputes
@@ -60,116 +55,6 @@ class ScanService:
         self.keep_images = keep_images and bool(image_dir)
 
     # ------------------------------------------------------------------
-    # POST /scan
-    # ------------------------------------------------------------------
-
-    def scan(self, image_bytes: bytes, fields: dict = None) -> tuple:
-        """Run one badge image through the engine, log it, and return the reading.
-
-        ``fields`` carries the multipart form values: ``worker_id``, ``lat``, ``lng``,
-        ``accuracy_m``, ``shift_hours``, ``badge_serial``, ``shift_id``, ``device``,
-        ``app_version``, ``client_scan_id``, ``scanned_at``.
-
-        A failed *reading* is still a successful *request*: HTTP 200 with ``ok: false``, the
-        engine's reason and an operator hint. The scanner needs the hint in order to tell the
-        worker what to change, and an error status would push it into a generic network-error
-        path instead. HTTP 4xx is reserved for a malformed request - no image, wrong field,
-        undecodable file.
-        """
-        fields = fields or {}
-        if not image_bytes:
-            return 400, {"error": "no image uploaded; expected a multipart field named "
-                                  "'image'"}
-        if len(image_bytes) > _MAX_UPLOAD_BYTES:
-            return 413, {"error": f"image too large ({len(image_bytes)} bytes); limit is "
-                                  f"{_MAX_UPLOAD_BYTES}"}
-
-        import cv2
-        arr = np.frombuffer(image_bytes, dtype=np.uint8)
-        bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        if bgr is None:
-            return 400, {"error": "could not decode the uploaded file as an image"}
-
-        cfg = self.config
-        sh = _num(fields.get("shift_hours"))
-        if sh and sh > 0:
-            cfg = ScanConfig(**{**cfg.__dict__, "shift_hours": sh})
-
-        result = scan_image(bgr, cfg).as_dict()
-
-        assess = result.get("exposure") or {}
-        band = band_for(assess.get("twa_ppm"), ok=bool(result.get("ok")))
-
-        lat = _num(fields.get("lat"))
-        lng = _num(fields.get("lng"))
-        mocked = False
-        if lat is None or lng is None:
-            # Mock GPS. A laptop webcam has no location and a phone indoors often refuses
-            # one, and without coordinates the map has nothing to draw - so a scan with no
-            # fix is placed at a plausible point inside a process unit, weighted towards
-            # sour service. It is flagged ``location_mocked`` in the response and in the
-            # stored record, and the dashboard draws those pins hollow: a demonstration
-            # coordinate must never be indistinguishable from a surveyed one.
-            lat, lng = self.mock_location(fields.get("worker_id"))
-            mocked = True
-
-        unit, dist = MRPL.nearest_unit(lat, lng)
-        unit_code = unit.code if (unit is not None and dist <= unit.radius_m * 1.5) else None
-
-        sha = hashlib.sha256(image_bytes).hexdigest()
-        path = None
-        if self.keep_images:
-            path = os.path.join(self.image_dir, f"{sha[:16]}.jpg")
-            if not os.path.exists(path):
-                with open(path, "wb") as fh:
-                    fh.write(image_bytes)
-
-        row = self.store.insert_scan(
-            result=result,
-            worker_id=fields.get("worker_id") or "UNKNOWN",
-            worker_name=fields.get("worker_name"),
-            shift_id=fields.get("shift_id"),
-            badge_serial=fields.get("badge_serial"),
-            band=band["key"],
-            scanned_at=fields.get("scanned_at") or utc_now_iso(),
-            lat=lat, lng=lng, accuracy_m=_num(fields.get("accuracy_m")),
-            unit_code=unit_code, location_mocked=mocked,
-            device=fields.get("device"), app_version=fields.get("app_version"),
-            client_scan_id=fields.get("client_scan_id") or str(uuid.uuid4()),
-            image_sha256=sha, image_path=path,
-        )
-
-        payload = {
-            # The flat fields the scanner UI binds to directly.
-            "ok": bool(result.get("ok")),
-            "status": assess.get("verdict") or ("INVALID" if not result.get("ok")
-                                                else "UNKNOWN"),
-            "band": band["key"],
-            "band_label": band["label"],
-            "colour": band["colour"],
-            "action": band["action"],
-            "dose_ppm_hr": assess.get("dose_ppm_hr"),
-            "twa_ppm": assess.get("twa_ppm"),
-            "shift_hours": assess.get("shift_hours"),
-            "delta_e": (result.get("colour") or {}).get("delta_e00"),
-            "delta_e00": (result.get("colour") or {}).get("delta_e00"),
-            "delta_l_star": (result.get("colour") or {}).get("delta_l_star"),
-            "reason": result.get("reason") or "",
-            "operator_hint": result.get("operator_hint") or "",
-            "warnings": result.get("warnings") or [],
-            # Provenance and the full audit record.
-            "scan_id": row["id"],
-            "duplicate": row["duplicate"],
-            "worker_id": fields.get("worker_id") or "UNKNOWN",
-            "lat": lat, "lng": lng,
-            "location_mocked": mocked,
-            "unit": unit_code,
-            "unit_name": None if unit_code is None else unit.name,
-            "scanned_at": fields.get("scanned_at") or utc_now_iso(),
-            "image_sha256": sha,
-            "detail": result,
-        }
-        return 200, payload
 
     def mock_location(self, seed=None) -> tuple:
         """A plausible coordinate inside a process unit, weighted towards sour service."""
@@ -187,21 +72,21 @@ class ScanService:
     # GET endpoints
     # ------------------------------------------------------------------
 
-    def scans(self, q: dict = None) -> tuple:
+    def measurements(self, q: dict = None) -> tuple:
         q = q or {}
-        rows = self.store.list_scans(
+        rows = self.store.list_measurements(
             since=q.get("since"), until=q.get("until"),
             worker_id=q.get("worker_id"), band=q.get("band"),
             include_invalid=str(q.get("include_invalid", "1")).lower()
             not in ("0", "false", "no"),
             limit=int(_num(q.get("limit"), 500)),
         )
-        return 200, {"scans": rows, "n": len(rows), "server_time": utc_now_iso()}
+        return 200, {"measurements": rows, "n": len(rows), "server_time": utc_now_iso()}
 
-    def scan_detail(self, scan_id: int) -> tuple:
-        row = self.store.get_scan(scan_id)
+    def measurement_detail(self, measurement_id: int) -> tuple:
+        row = self.store.get_measurement(measurement_id)
         if row is None:
-            return 404, {"error": f"no scan with id {scan_id}"}
+            return 404, {"error": f"no scan with id {measurement_id}"}
         return 200, row
 
     def heatmap(self, q: dict = None) -> tuple:
@@ -211,7 +96,7 @@ class ScanService:
         if since is None and hours and hours > 0:
             since = (datetime.now(timezone.utc) - timedelta(hours=hours)).replace(
                 microsecond=0).isoformat().replace("+00:00", "Z")
-        rows = self.store.list_scans(since=since, limit=int(_num(q.get("limit"), 2000)))
+        rows = self.store.list_measurements(since=since, limit=int(_num(q.get("limit"), 2000)))
         payload = heatmap_payload(
             rows,
             nx=int(_num(q.get("nx"), 48)), ny=int(_num(q.get("ny"), 48)),
@@ -235,9 +120,7 @@ class ScanService:
 
     def health(self) -> tuple:
         return 200, {"ok": True, "service": "sih26118-h2s-dosimeter",
-                     "engine": "engine.pipeline", "plant": MRPL.name,
-                     "observable": self.config.calibration.observable,
-                     "shift_hours": self.config.shift_hours,
+                     "plant": MRPL.name,
                      "server_time": utc_now_iso()}
 
     # ------------------------------------------------------------------
@@ -245,7 +128,7 @@ class ScanService:
     # ------------------------------------------------------------------
 
     def seed_demo(self, q: dict = None) -> tuple:
-        """Populate the log with synthetic scans so the dashboard has something to show.
+        """Populate the log with synthetic measurements so the dashboard has something to show.
 
         Every row it writes is marked ``DEMO`` in ``shift_id`` and ``synthetic: true`` in the
         stored result JSON, and the worker IDs are prefixed ``DEMO-``. That labelling is
@@ -286,38 +169,23 @@ class ScanService:
                 microsecond=0).isoformat().replace("+00:00", "Z")
             wid = f"DEMO-{100 + rnd.randrange(38)}"
             result = {
-                "ok": ok, "synthetic": True,
-                "stage_failed": "" if ok else "normalize",
-                "reason": "" if ok else ("synthetic unreadable scan - demo data, stands in "
-                                         "for a badge that failed its integrity checks"),
-                "operator_hint": "" if ok else "Switch the torch on and retake.",
-                "warnings": [] if ok else ["synthetic"],
-                "exposure": ({"verdict": band["label"].upper() if ok else "INVALID",
-                                "dose_ppm_hr": round(dose, 3) if ok else None,
-                                "twa_ppm": round(twa, 4) if ok else None,
-                                "shift_hours": shift_hours}),
-                "colour": {"delta_l_star": round(2.5 + 3.2 * twa, 3) if ok else None,
-                           "delta_e00": round(1.7 + 2.1 * twa, 3) if ok else None,
-                           "ccm_mode": "root6",
-                           "baseline_source": "onbadge:SUBSTRATE_A+SUBSTRATE_B"},
-                "geometry": {"reproj_rmse_mm": round(rnd.uniform(0.01, 0.12), 4)},
+                "ok": ok,
+                "verdict": band["label"].upper() if ok else "INVALID",
+                "dose_ppm_hr": round(dose, 3) if ok else None,
+                "twa_ppm": round(twa, 4) if ok else None,
             }
-            row = self.store.insert_scan(
-                result=result, worker_id=wid, band=band["key"], scanned_at=when,
-                shift_id="DEMO", badge_serial=f"DEMO-B{rnd.randrange(9000):04d}",
+            row = self.store.insert_measurement(
+                result=result, worker_id=wid, band=band["key"], measured_at=when,
                 lat=round(lat, 6), lng=round(lng, 6),
                 accuracy_m=round(rnd.uniform(4, 28), 1), unit_code=u.code,
                 # Generated coordinates, so they are flagged as such and the dashboard draws
                 # them hollow alongside the DEMO labelling.
-                location_mocked=True,
-                device="seed_demo", app_version="demo",
-                client_scan_id=f"demo-{uuid.uuid4()}")
+                location_mocked=True)
             written.append(row["id"])
         return 200, {"inserted": len(written), "ids": written[:20],
-                     "note": "Synthetic demonstration data, labelled shift_id=DEMO and "
-                             "worker_id DEMO-*. Delete with /api/demo/clear."}
+                     "note": "Synthetic demonstration data. Delete with /api/demo/clear."}
 
     def clear_demo(self) -> tuple:
-        cur = self.store._conn.execute("DELETE FROM scans WHERE shift_id = 'DEMO'")
+        cur = self.store._conn.execute("DELETE FROM measurements WHERE worker_id LIKE 'DEMO-%'")
         self.store._conn.commit()
         return 200, {"deleted": cur.rowcount}

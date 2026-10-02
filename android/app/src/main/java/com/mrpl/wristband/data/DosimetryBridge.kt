@@ -82,6 +82,13 @@ object DosimetryBridge {
                     deltaLStar = normalizedResult.deltaLStar
                 )
 
+                val debugStr = """
+                    CCM: ${normalizedResult.mode}
+                    Pad RGB: ${normalizedResult.padLinear?.map { "%.3f".format(it) }?.joinToString()}
+                    Pad Lab: ${normalizedResult.padLab?.map { "%.2f".format(it) }?.joinToString()}
+                    Base Lab: ${normalizedResult.baselineLab?.map { "%.2f".format(it) }?.joinToString()}
+                """.trimIndent()
+
                 return ScanUiResult(
                     wristbandId = wristbandIdHint,
                     refinery = null,
@@ -97,7 +104,8 @@ object DosimetryBridge {
                     verdict = dResult.verdict.name,
                     level = null,
                     lastCloudSync = null,
-                    isMock = false
+                    isMock = false,
+                    debugInfo = debugStr
                 )
             }
         } catch (e: Exception) {

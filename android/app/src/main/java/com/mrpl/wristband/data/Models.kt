@@ -60,7 +60,8 @@ data class ScanUiResult(
     val lastCloudSync: String? = null,
     val isMock: Boolean = true,
     val scanState: ScanState = ScanState.SUCCESS,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val debugInfo: String? = null
 ) : Serializable
 
 data class ExposureRecord(

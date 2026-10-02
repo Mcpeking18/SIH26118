@@ -11,11 +11,11 @@
 
   The heat layer is drawn from the server's own inverse-distance grid (/api/heatmap), not from
   a generic point-density heatmap plugin. That is a deliberate choice: a density plugin would
-  colour the map by how many badges were scanned somewhere, and the place with the most scans
+  colour the map by how many badges were measurementned somewhere, and the place with the most measurements
   is the exit kiosk. What an HSE lead needs is the interpolated *exposure*, together with an
   honest statement of how much evidence sits behind each cell - which is why cells with no
   badge inside the search radius are left uncoloured and cells supported only by a distant
-  badge are drawn faint. hse/core.py returns the support and nearest-scan layers for exactly
+  badge are drawn faint. hse/core.py returns the support and nearest-measurement layers for exactly
   this purpose.
 
   Leaflet is loaded from a CDN. On an air-gapped plant network, drop leaflet.js and
@@ -181,7 +181,7 @@
     <div id="map"></div>
     <div class="layers">
       <label><input type="checkbox" id="lHeat" checked> Exposure surface</label>
-      <label><input type="checkbox" id="lPins" checked> Worker scans</label>
+      <label><input type="checkbox" id="lPins" checked> Worker measurements</label>
       <label><input type="checkbox" id="lClusters" checked> Clusters</label>
       <label><input type="checkbox" id="lUnits" checked> Process units</label>
     </div>
@@ -195,16 +195,16 @@
       <div class="row"><span class="dot" style="background:#2e7d32"></span> Safe</div>
       <div class="row"><span class="dot" style="background:#616161"></span> Unreadable badge</div>
       <div class="row"><span class="hollow"></span> Coordinate generated, not observed</div>
-      <p>Interpolated between badge scans. Faint areas are supported only by a distant badge;
+      <p>Interpolated between badge measurements. Faint areas are supported only by a distant badge;
          uncoloured areas had no badge within 350 m. Not a dispersion model.</p>
     </div>
   </div>
 
   <aside id="side">
     <div class="kpis">
-      <div class="kpi"><i>Scans in window</i><b id="kScans">—</b><small id="kWorkers">&nbsp;</small></div>
+      <div class="kpi"><i>Measurements in window</i><b id="kMeasurements">—</b><small id="kWorkers">&nbsp;</small></div>
       <div class="kpi"><i>Peak TWA</i><b id="kPeak">—</b><small>ppm &middot; TLV 1.0</small></div>
-      <div class="kpi"><i>Over TLV</i><b id="kOver">—</b><small>scans &ge;1 ppm</small></div>
+      <div class="kpi"><i>Over TLV</i><b id="kOver">—</b><small>measurements &ge;1 ppm</small></div>
       <div class="kpi"><i>Read rate</i><b id="kRead">—</b><small id="kInvalid">&nbsp;</small></div>
     </div>
     <div id="panels"></div>
@@ -397,13 +397,13 @@ function drawUnits(plant, rollup){
       + (u.note ? `<br><span style="color:#cfdae4">${esc(u.note)}</span>` : '')
       + (roll
           ? `<hr style="border:0;border-top:1px solid #28323c;margin:9px 0">`
-            + `<b>${roll.n_scans}</b> scans from <b>${roll.n_workers}</b> workers in this `
+            + `<b>${roll.n_measurements}</b> measurements from <b>${roll.n_workers}</b> workers in this `
             + `window &middot; peak <b>${fmt(roll.peak_twa_ppm,3)}</b> ppm`
             + (roll.n_over_tlv ? ` &middot; <span style="color:#ff9b6b">`
                 + `${roll.n_over_tlv} over TLV</span>` : '')
             + (roll.n_invalid ? ` &middot; ${roll.n_invalid} unreadable` : '')
           : `<hr style="border:0;border-top:1px solid #28323c;margin:9px 0">`
-            + `<span style="color:#6b7885">No scans here in this window — which is not the `
+            + `<span style="color:#6b7885">No measurements here in this window — which is not the `
             + `same as no exposure here.</span>`)
     );
     c.addTo(layers.units);
@@ -411,7 +411,7 @@ function drawUnits(plant, rollup){
 }
 
 /* =========================================================================
-   Worker scan pins
+   Worker measurement pins
    ========================================================================= */
 function drawPins(points){
   layers.pins.clearLayers();
@@ -429,7 +429,7 @@ function drawPins(points){
       // real; the position is not, and a pin must not imply a location it does not have.
       fillOpacity: mocked ? 0.14 : 0.92,
     });
-    m.bindPopup(()=>popupForScan(p), {maxWidth:300});
+    m.bindPopup(()=>popupForMeasurement(p), {maxWidth:300});
     m.addTo(layers.pins);
     // A GPS fix worse than 40 m is drawn as its own uncertainty circle. At that point the
     // pin is a neighbourhood, not a spot, and attributing it to a unit is a guess.
@@ -440,9 +440,9 @@ function drawPins(points){
   });
 }
 
-function popupForScan(p){
+function popupForMeasurement(p){
   const col = BAND_COLOUR[p.band] || BAND_COLOUR.invalid;
-  const t = (p.scanned_at||'').replace('T',' ').replace('Z',' UTC');
+  const t = (p.measurementned_at||'').replace('T',' ').replace('Z',' UTC');
   let h = `<div style="display:flex;align-items:center;gap:8px">
       <span style="width:10px;height:26px;border-radius:3px;background:${col}"></span>
       <div><b style="font-size:14px">${esc(p.worker_id||'?')}</b>
@@ -465,11 +465,11 @@ function popupForScan(p){
   }
   if(p.location_mocked){
     h += `<div style="margin-top:8px;color:#9aa7b4;font-size:11px;line-height:1.5">
-      No GPS fix at scan time: this position was generated for demonstration and should not
+      No GPS fix at measurement time: this position was generated for demonstration and should not
       be attributed to ${esc(p.unit||'this area')}.</div>`;
   }
   if(p.id){
-    h += `<div style="margin-top:9px"><a href="${API}/api/scans/${p.id}" target="_blank"
+    h += `<div style="margin-top:9px"><a href="${API}/api/measurements/${p.id}" target="_blank"
       style="color:#38bdf8;font-size:11.5px">Open the full audit record &rarr;</a></div>`;
   }
   return h;
@@ -489,7 +489,7 @@ function drawClusters(clusters){
       className:'', iconSize:[30,30], iconAnchor:[15,15],
       html:`<div style="width:30px;height:30px;border-radius:50%;background:${col};
              border:2px solid #0b0e11;color:#fff;font:700 12px/26px var(--sans);
-             text-align:center;box-shadow:0 3px 10px -3px #000">${c.n_scans}</div>`})})
+             text-align:center;box-shadow:0 3px 10px -3px #000">${c.n_measurements}</div>`})})
       .bindPopup(clusterPopup(c, i+1), {maxWidth:300})
       .addTo(layers.clusters);
   });
@@ -502,7 +502,7 @@ function clusterPopup(c, n){
     <table style="width:100%;font-size:11.5px;color:#cfdae4;margin-top:8px">
     <tr><td>Peak TWA</td><td class="r"><b>${fmt(c.peak_twa_ppm,3)}</b> ppm</td></tr>
     <tr><td>Mean TWA</td><td class="r">${fmt(c.mean_twa_ppm,3)} ppm</td></tr>
-    <tr><td>Scans / workers</td><td class="r">${c.n_scans} / <b>${c.n_workers}</b></td></tr>
+    <tr><td>Measurements / workers</td><td class="r">${c.n_measurements} / <b>${c.n_workers}</b></td></tr>
     <tr><td>Spread</td><td class="r">${fmt(c.radius_m,0)} m</td></tr>
     </table>
     <div style="margin-top:9px;font-size:11.5px;line-height:1.55;color:#e6eef5">
@@ -514,7 +514,7 @@ function clusterPopup(c, n){
    ========================================================================= */
 function drawSide(d){
   const st = d.stats || {};
-  $('kScans').textContent  = st.n ?? 0;
+  $('kMeasurements').textContent  = st.n ?? 0;
   $('kWorkers').textContent = `${st.n_workers ?? 0} workers · ${d.n_located ?? 0} located`;
   $('kPeak').textContent   = fmt(st.peak_twa, 3);
   $('kPeak').style.color   = (st.peak_twa >= 5) ? '#ff8a80'
@@ -584,6 +584,35 @@ function drawSide(d){
     </section>`);
   }
 
+  // ---- Concerns / Attention -------------------------------------------
+  if (d.measurementHistory && d.measurementHistory.length > 0) {
+    const concerns = d.measurementHistory.filter(m => m.twa_ppm >= 5 || m.dose_ppm_hr >= 10);
+    if (concerns.length > 0) {
+      panels.push(`<section style="background:var(--panel-2); border-left:3px solid var(--critical)">
+        <h2 style="color:var(--critical); font-weight:bold;">Concerns / Attention</h2>
+        <p class="note" style="color:var(--ink)">Readings exceeding safety thresholds (TWA &ge; 5 ppm or Dose &ge; 10 ppm·hr)</p>
+        <table style="width:100%; border-collapse:collapse; font-size:12px; margin-top:8px;">
+          <thead style="text-align:left; color:var(--ink-faint); border-bottom:1px solid var(--line)">
+            <tr>
+              <th style="padding-bottom:6px">Worker</th>
+              <th style="padding-bottom:6px">Zone</th>
+              <th style="padding-bottom:6px; color:var(--critical)">TWA</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${concerns.map(m => {
+              return `<tr style="border-bottom:1px solid var(--line)">
+                <td style="padding:6px 0">${esc(m.worker_name || m.worker_id)}</td>
+                <td style="padding:6px 0">${esc(m.zone || 'Unknown')}</td>
+                <td style="padding:6px 0; font-family:var(--mono); color:var(--critical); font-weight:bold">${fmt(m.twa_ppm,1)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </section>`);
+    }
+  }
+
 
   // ---- trend chart ----------------------------------------------------
   panels.push(`<section><h2>Exposure Trend</h2>
@@ -595,8 +624,8 @@ function drawSide(d){
   // ---- clusters -------------------------------------------------------
   const cl = d.clusters || [];
   panels.push(`<section><h2>Areas to look at (${cl.length})</h2>
-    <p class="note">Groups of scans at or above 0.5 ppm TWA within 120 m of each other.
-      Worker count matters as much as scan count: several readings from one person points at
+    <p class="note">Groups of measurements at or above 0.5 ppm TWA within 120 m of each other.
+      Worker count matters as much as measurement count: several readings from one person points at
       that person's task or badge, several people points at the area.</p>
     ${cl.length ? cl.map((c,i)=>`
       <div class="card" style="border-left-color:${BAND_COLOUR[c.band]||'#f9a825'}"
@@ -604,12 +633,12 @@ function drawSide(d){
         <div class="top"><b>${esc(c.unit_name||'Unmapped area')}</b>
           <span class="tag${c.sour_service?' sour':''}">${c.sour_service?'sour':'not sour'}</span>
           <span class="pk">${fmt(c.peak_twa_ppm,2)}</span></div>
-        <div class="meta">${c.n_scans} scans &middot; ${c.n_workers} worker${
+        <div class="meta">${c.n_measurements} measurements &middot; ${c.n_workers} worker${
             c.n_workers===1?'':'s'} &middot; ${fmt(c.radius_m,0)} m spread</div>
         <div class="interp">${esc(c.interpretation||'')}</div>
       </div>`).join('')
       : `<div class="empty" style="padding:10px 0">No clustered exposure in this window.
-         With few scans that means little — a quiet map with 4 badges is not evidence of a
+         With few measurements that means little — a quiet map with 4 badges is not evidence of a
          quiet plant.</div>`}
     </section>`);
 
@@ -619,23 +648,23 @@ function drawSide(d){
     <p class="note">Ranked by peak TWA in the window. The unreadable column is deliberately
       next to the exposure figures — a worker whose badge keeps failing has no record at all.</p>
     <table><thead><tr><th>Worker</th><th class="r">Peak</th><th class="r">Cumul.</th>
-      <th class="r">Scans</th></tr></thead><tbody>
+      <th class="r">Measurements</th></tr></thead><tbody>
     ${w.length ? w.map(r=>`<tr data-worker="${esc(r.worker_id)}">
         <td><span class="sw" style="background:${
-            BAND_COLOUR[bandOf(r.peak_twa_ppm, r.n_scans > (r.n_invalid||0))]}"></span>
+            BAND_COLOUR[bandOf(r.peak_twa_ppm, r.n_measurements > (r.n_invalid||0))]}"></span>
           ${esc(r.worker_id)}</td>
         <td class="r ${r.peak_twa_ppm>=1?'over':''}">${fmt(r.peak_twa_ppm,3)}</td>
         <td class="r">${fmt(r.cumulative_ppm_hr,1)}</td>
-        <td class="r">${r.n_scans}${r.n_invalid?`<span class="bad"> +${r.n_invalid}✕</span>`:''}</td>
+        <td class="r">${r.n_measurements}${r.n_invalid?`<span class="bad"> +${r.n_invalid}✕</span>`:''}</td>
       </tr>`).join('')
-      : `<tr><td colspan="4" style="color:#6b7885">No scans in this window.</td></tr>`}
+      : `<tr><td colspan="4" style="color:#6b7885">No measurements in this window.</td></tr>`}
     </tbody></table></section>`);
 
   // ---- units ----------------------------------------------------------
-  const u = (d.units || []).filter(x => x.n_scans > 0);
+  const u = (d.units || []).filter(x => x.n_measurements > 0);
   panels.push(`<section><h2>By process unit (${u.length})</h2>
-    <p class="note">Scans outside every mapped unit are grouped as OUTSIDE rather than pushed
-      into the nearest unit — attributing a roadside scan to a process area would put a finding
+    <p class="note">Measurements outside every mapped unit are grouped as OUTSIDE rather than pushed
+      into the nearest unit — attributing a roadside measurement to a process area would put a finding
       on the wrong unit's record.</p>
     <table><thead><tr><th>Unit</th><th class="r">Peak</th><th class="r">Workers</th>
       <th class="r">&ge;TLV</th></tr></thead><tbody>
@@ -646,7 +675,7 @@ function drawSide(d){
         <td class="r">${r.n_workers}</td>
         <td class="r ${r.n_over_tlv?'over':''}">${r.n_over_tlv||'—'}</td>
       </tr>`).join('')
-      : `<tr><td colspan="4" style="color:#6b7885">No located scans in this window.</td></tr>`}
+      : `<tr><td colspan="4" style="color:#6b7885">No located measurements in this window.</td></tr>`}
     </tbody></table></section>`);
 
   // ---- what this is ---------------------------------------------------
@@ -654,7 +683,7 @@ function drawSide(d){
   panels.push(`<section><h2>What this map is</h2>
     <p class="note">${esc(g.note || '')}</p>
     <p class="note">Window ${esc((d.window&&d.window.since)||'—')} to now,
-      ${d.n_scans||0} scans, ${d.n_located||0} with a coordinate.
+      ${d.n_measurements||0} measurements, ${d.n_located||0} with a coordinate.
       Grid ${g.nx||0}&times;${g.ny||0}, IDW power ${fmt(g.power,1)},
       search radius ${fmt(g.radius_m,0)} m.
       Server time ${esc(d.server_time||'')}.</p>
@@ -684,7 +713,7 @@ function drawSide(d){
 function drawTrendChart(d) {
   if (!d.points || d.points.length === 0) return;
   
-  // Group scans into 10 buckets across the current time window
+  // Group measurements into 10 buckets across the current time window
   const now = new Date();
   const startTime = new Date(now.getTime() - hours * 3600 * 1000);
   const buckets = 10;
@@ -700,8 +729,8 @@ function drawTrendChart(d) {
   }
   
   d.points.forEach(p => {
-    if (!p.scanned_at) return;
-    const ptTime = new Date(p.scanned_at).getTime();
+    if (!p.measurementned_at) return;
+    const ptTime = new Date(p.measurementned_at).getTime();
     if (ptTime < startTime.getTime()) return;
     const b = Math.floor((ptTime - startTime.getTime()) / stepMs);
     if (b >= 0 && b < buckets) {
@@ -819,11 +848,11 @@ async function load(){
    record is evidence; the moment demonstration rows look like measurements, it stops being. */
 function demoBanner(d){
   const n = (d.workers||[]).filter(w => String(w.worker_id||'').startsWith('DEMO-'))
-                           .reduce((a,w)=>a+(w.n_scans||0), 0);
+                           .reduce((a,w)=>a+(w.n_measurements||0), 0);
   const b = $('banner');
   b.classList.toggle('on', n > 0);
   if(n > 0){
-    b.innerHTML = `<b>Demonstration data.</b> ${n} of ${d.stats?d.stats.n:n} scans in this `
+    b.innerHTML = `<b>Demonstration data.</b> ${n} of ${d.stats?d.stats.n:n} measurements in this `
       + `window are synthetic (worker IDs prefixed <code>DEMO-</code>, shift <code>DEMO</code>, `
       + `generated coordinates drawn hollow). Their doses were sampled from each unit's H₂S `
       + `propensity, not measured from a badge. Use <b>Clear demo</b> before showing real `
@@ -851,7 +880,7 @@ $('btnSeed').addEventListener('click', async ()=>{
   $('btnSeed').disabled = false; load();
 });
 $('btnClear').addEventListener('click', async ()=>{
-  if(!confirm('Delete every scan labelled shift_id=DEMO? Measured scans are not touched.'))
+  if(!confirm('Delete every measurement labelled shift_id=DEMO? Measured measurements are not touched.'))
     return;
   try{ await fetch(`${API}/api/demo/clear`, {method:'POST'}); }catch(e){}
   load();

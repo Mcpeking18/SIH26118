@@ -6,7 +6,7 @@ server and any offline analysis, and can be checked without either of them runni
 
 WHAT THIS LAYER IS ALLOWED TO CLAIM
 -----------------------------------
-It turns a set of point scans into a map. It is worth being precise about what that map is,
+It turns a set of point measurements into a map. It is worth being precise about what that map is,
 because a smooth coloured surface is extremely persuasive and this one is an interpolation
 between sparse badge readings, not a gas dispersion model.
 
@@ -20,7 +20,7 @@ triage* aid: it ranks areas for attention and it makes a spatial pattern in the 
 record visible. Fixed-point gas detectors, and a survey with a portable monitor, remain the
 instruments that tell you where a leak is.
 
-The functions below therefore report their own support - how many scans, how far away the
+The functions below therefore report their own support - how many measurements, how far away the
 nearest one was - alongside every interpolated value, so the UI can grey out a cell that is
 being extrapolated from one badge 400 m away instead of colouring it confidently.
 """
@@ -35,7 +35,7 @@ __all__ = [
     "PlantUnit", "Plant", "MRPL", "H2S_UNITS",
     "haversine_m", "local_xy_m", "bounds_of",
     "RISK_BANDS", "band_for", "band_for_dose",
-    "idw_grid", "cluster_scans", "unit_rollup", "heatmap_payload",
+    "idw_grid", "cluster_measurements", "unit_rollup", "heatmap_payload",
 ]
 
 
@@ -270,7 +270,19 @@ def band_for_dose(dose_ppm_hr, shift_hours: float = 8.0, ok: bool = True) -> dic
 # Interpolation
 # ---------------------------------------------------------------------------
 
-def idw_grid(scans, nx: int = 44, ny: int = 44, power: float = 2.0,
+def _ensure_coords(s: dict):
+    lat, lng = s.get("lat"), s.get("lng")
+    if lat is None or lng is None:
+        u_code = s.get("unit") or s.get("unit_code") or s.get("zone")
+        if u_code:
+            try:
+                u = MRPL.unit(u_code)
+                return u.lat, u.lng
+            except KeyError:
+                pass
+    return lat, lng
+
+def idw_grid(measurements, nx: int = 44, ny: int = 44, power: float = 2.0,
              radius_m: float = 350.0, smoothing_m: float = 25.0,
              bounds: dict = None, value_key: str = "twa_ppm") -> dict:
     """Inverse-distance-weighted surface over the scan points.
@@ -306,8 +318,8 @@ def idw_grid(scans, nx: int = 44, ny: int = 44, power: float = 2.0,
     pattern, and never as a concentration field.
     """
     pts = []
-    for s in scans:
-        lat, lng = s.get("lat"), s.get("lng")
+    for s in measurements:
+        lat, lng = _ensure_coords(s)
         v = s.get(value_key)
         if lat is None or lng is None or v is None:
             continue
@@ -330,7 +342,7 @@ def idw_grid(scans, nx: int = 44, ny: int = 44, power: float = 2.0,
         "lat": [round(float(v), 6) for v in glat],
         "lng": [round(float(v), 6) for v in glng],
         "values": [], "support": [], "nearest_m": [],
-        "note": ("Inverse-distance interpolation between badge scans. A screening aid, not "
+        "note": ("Inverse-distance interpolation between badge measurements. A screening aid, not "
                  "a dispersion model: it cannot exceed the highest badge it is drawn from, "
                  "and cells with no scan within the radius are returned null."),
     }
@@ -350,8 +362,8 @@ def idw_grid(scans, nx: int = 44, ny: int = 44, power: float = 2.0,
     gx, gy = local_xy_m(GLAT, GLNG, lat0, lng0)
 
     # (ny, nx, n) distances. Grids here are ~44x44x(<=2000) which is small enough to do
-    # densely; a site with 10^5 stored scans should pre-filter by bbox and time first, which
-    # is what the store's list_scans(bbox=..., since=...) is for.
+    # densely; a site with 10^5 stored measurements should pre-filter by bbox and time first, which
+    # is what the store's list_measurements(bbox=..., since=...) is for.
     d = np.sqrt((gx[..., None] - px[None, None, :]) ** 2
                 + (gy[..., None] - py[None, None, :]) ** 2)
     near = d.min(axis=2)
@@ -371,25 +383,26 @@ def idw_grid(scans, nx: int = 44, ny: int = 44, power: float = 2.0,
     return out
 
 
-def cluster_scans(scans, eps_m: float = 120.0, min_twa: float = 0.5,
+def cluster_measurements(measurements, eps_m: float = 120.0, min_twa: float = 0.5,
                   min_points: int = 2) -> list:
-    """Single-link spatial clusters of concerning scans, worst first.
+    """Single-link spatial clusters of concerning measurements, worst first.
 
-    The point of clustering rather than just listing high scans is that one high badge is a
+    The point of clustering rather than just listing high measurements is that one high badge is a
     *worker* finding - it could be that person's task, their PPE, or a badge fault - whereas
     several high badges in the same place is an *area* finding, and only the second justifies
     sending someone with a portable monitor. So the returned records carry both the count and
-    the number of distinct workers: three high scans from one worker is still one worker.
+    the number of distinct workers: three high measurements from one worker is still one worker.
 
     ``eps_m`` of 120 m is chosen against the plant layout rather than tuned: it is a little
-    over the radius of the process units in :data:`MRPL`, so scans within the same unit group
-    together while scans in adjacent units generally do not. Single-link agglomeration is
+    over the radius of the process units in :data:`MRPL`, so measurements within the same unit group
+    together while measurements in adjacent units generally do not. Single-link agglomeration is
     used because with tens of points per shift it is exact, deterministic and trivially
     explainable in an audit - which matters more here than the asymptotics.
     """
     hot = []
-    for s in scans:
-        lat, lng, twa = s.get("lat"), s.get("lng"), s.get("twa_ppm")
+    for s in measurements:
+        lat, lng = _ensure_coords(s)
+        twa = s.get("twa_ppm")
         if lat is None or lng is None or twa is None:
             continue
         try:
@@ -437,7 +450,7 @@ def cluster_scans(scans, eps_m: float = 120.0, min_twa: float = 0.5,
         peak = max(twas)
         out.append({
             "lat": round(lat, 6), "lng": round(lng, 6),
-            "n_scans": len(members),
+            "n_measurements": len(members),
             "n_workers": len(workers),
             "workers": workers[:12],
             "peak_twa_ppm": round(peak, 3),
@@ -450,7 +463,7 @@ def cluster_scans(scans, eps_m: float = 120.0, min_twa: float = 0.5,
             "sour_service": bool(unit is not None and unit.code in H2S_UNITS),
             "interpretation": _cluster_note(unit, len(workers), peak),
         })
-    out.sort(key=lambda c: (-c["peak_twa_ppm"], -c["n_scans"]))
+    out.sort(key=lambda c: (-c["peak_twa_ppm"], -c["n_measurements"]))
     return out
 
 
@@ -473,16 +486,16 @@ def _cluster_note(unit, n_workers: int, peak_twa: float) -> str:
     return f"{urgency}{who} {site}"
 
 
-def unit_rollup(scans) -> list:
+def unit_rollup(measurements) -> list:
     """Per-unit exposure summary, assigning each scan to the nearest unit it falls inside.
 
-    Scans outside every unit's radius are collected under ``OUTSIDE`` rather than being
+    Measurements outside every unit's radius are collected under ``OUTSIDE`` rather than being
     forced into the nearest unit, because silently attributing a roadside scan to a process
     area would put a finding on the wrong unit's record.
     """
     buckets = {}
-    for s in scans:
-        lat, lng = s.get("lat"), s.get("lng")
+    for s in measurements:
+        lat, lng = _ensure_coords(s)
         code, name = "OUTSIDE", "Outside mapped units"
         if lat is not None and lng is not None:
             try:
@@ -491,9 +504,9 @@ def unit_rollup(scans) -> list:
                 u, d = None, float("inf")
             if u is not None and d <= u.radius_m * 1.5:
                 code, name = u.code, u.name
-        b = buckets.setdefault(code, {"unit": code, "unit_name": name, "n_scans": 0,
+        b = buckets.setdefault(code, {"unit": code, "unit_name": name, "n_measurements": 0,
                                       "n_invalid": 0, "workers": set(), "twas": []})
-        b["n_scans"] += 1
+        b["n_measurements"] += 1
         twa = s.get("twa_ppm")
         okflag = s.get("ok", True)
         if s.get("worker_id"):
@@ -513,7 +526,7 @@ def unit_rollup(scans) -> list:
         peak = max(twas) if twas else float("nan")
         rec = {
             "unit": b["unit"], "unit_name": b["unit_name"],
-            "n_scans": b["n_scans"], "n_invalid": b["n_invalid"],
+            "n_measurements": b["n_measurements"], "n_invalid": b["n_invalid"],
             "n_workers": len(b["workers"]),
             "peak_twa_ppm": None if not twas else round(peak, 3),
             "mean_twa_ppm": None if not twas else round(sum(twas) / len(twas), 3),
@@ -522,20 +535,21 @@ def unit_rollup(scans) -> list:
             "sour_service": b["unit"] in H2S_UNITS,
         }
         out.append(rec)
-    out.sort(key=lambda r: (-(r["peak_twa_ppm"] or -1), -r["n_scans"]))
+    out.sort(key=lambda r: (-(r["peak_twa_ppm"] or -1), -r["n_measurements"]))
     return out
 
 
-def heatmap_payload(scans, **grid_kw) -> dict:
+def heatmap_payload(measurements, **grid_kw) -> dict:
     """Everything the map needs in one response: points, grid, clusters, unit rollup."""
     pts = []
-    for s in scans:
+    for s in measurements:
         band = band_for(s.get("twa_ppm"), ok=bool(s.get("ok", True)))
+        lat, lng = _ensure_coords(s)
         pts.append({
             "id": s.get("id"),
             "worker_id": s.get("worker_id"),
-            "scanned_at": s.get("scanned_at"),
-            "lat": s.get("lat"), "lng": s.get("lng"),
+            "measured_at": s.get("measured_at"),
+            "lat": lat, "lng": lng,
             "accuracy_m": s.get("accuracy_m"),
             # Carried so the map can draw a generated coordinate differently from an observed
             # one. Without it the two are indistinguishable on screen, which is the one thing
@@ -543,23 +557,38 @@ def heatmap_payload(scans, **grid_kw) -> dict:
             "location_mocked": bool(s.get("location_mocked")),
             "dose_ppm_hr": s.get("dose_ppm_hr"),
             "twa_ppm": s.get("twa_ppm"),
-            "delta_l_star": s.get("delta_l_star"),
-            "delta_e00": s.get("delta_e00"),
             "verdict": s.get("verdict"),
             "ok": bool(s.get("ok", True)),
             "band": band["key"],
             "colour": band["colour"],
             "unit": s.get("unit"),
         })
-    grid = idw_grid(scans, **grid_kw)
-    clusters = cluster_scans(scans)
+    grid = idw_grid(measurements, **grid_kw)
+    clusters = cluster_measurements(measurements)
+    
+    sorted_measurements = sorted([s for s in measurements if s.get("ok", True)], key=lambda x: x.get("measured_at") or "", reverse=True)
+    history = []
+    for s in sorted_measurements[:50]:
+        history.append({
+            "id": s.get("id"),
+            "worker_id": s.get("worker_id"),
+            "worker_name": s.get("worker_name") or s.get("worker_id"),
+            "zone": s.get("unit"),
+            "timestamp": s.get("measured_at"),
+            "dose_ppm_hr": s.get("dose_ppm_hr"),
+            "twa_ppm": s.get("twa_ppm"),
+            "status": s.get("verdict") or "UNKNOWN"
+        })
+
     return {
         "points": pts,
         "grid": grid,
         "clusters": clusters,
-        "units": unit_rollup(scans),
+        "units": unit_rollup(measurements),
         "plant": MRPL.as_dict(),
         "bands": list(RISK_BANDS),
-        "n_scans": len(pts),
+        "n_measurements": len(pts),
         "n_located": sum(1 for p in pts if p["lat"] is not None and p["lng"] is not None),
+        "measurementHistory": history,
+        "latestMeasurement": history[0] if history else None,
     }

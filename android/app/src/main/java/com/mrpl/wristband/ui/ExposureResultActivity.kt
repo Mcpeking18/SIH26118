@@ -42,6 +42,7 @@ class ExposureResultActivity : AppCompatActivity() {
         val tvDeltaE = findViewById<TextView>(R.id.tvDeltaE)
         val tvTimestamp = findViewById<TextView>(R.id.tvTimestamp)
         val tvWristbandId = findViewById<TextView>(R.id.tvWristbandId)
+        val tvDebugInfo = findViewById<TextView>(R.id.tvDebugInfo)
 
         if (scanResult != null) {
             tvDose.text = if (scanResult.dosePpmHr != null) String.format("%.2f", scanResult.dosePpmHr) else "--"
@@ -50,6 +51,8 @@ class ExposureResultActivity : AppCompatActivity() {
             tvDeltaE.text = String.format("%.2f", scanResult.deltaE00 ?: 0.0)
             tvTimestamp.text = scanResult.timestamp ?: "Unknown Time"
             tvWristbandId.text = scanResult.wristbandId ?: "Unknown ID" 
+            tvDebugInfo.text = scanResult.debugInfo ?: "No debug info available."
+
             val tvClassification = findViewById<TextView>(R.id.tvClassification)
             val dose = scanResult.dosePpmHr
             if (dose != null) {
@@ -69,6 +72,7 @@ class ExposureResultActivity : AppCompatActivity() {
             tvDeltaE.text = "--"
             tvTimestamp.text = "--"
             tvWristbandId.text = "--"
+            tvDebugInfo.text = "--"
         }
 
         btnSaveResult.setOnClickListener {
@@ -97,7 +101,7 @@ class ExposureResultActivity : AppCompatActivity() {
                         val zoneStr = updatedResult.zone ?: "Unknown"
                         val wid = updatedResult.wristbandId
                         
-                        val json = """{"worker_id": "$wid", "worker_name": "Test Worker", "zone": "$zoneStr", "dose_ppm_hr": $dose, "twa_ppm": $twa, "status": "$status"}"""
+                        val json = """{"worker_id": "$wid", "worker_name": "Test Worker", "zone": "$zoneStr", "dose_ppm_hr": $dose, "twa_ppm": $twa, "status": "$status", "temperature_c": null, "humidity_rh": null}"""
                         
                         conn.outputStream.use { it.write(json.toByteArray()) }
                         val code = conn.responseCode
