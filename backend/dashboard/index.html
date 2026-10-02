@@ -189,8 +189,8 @@
       <h3>8-hour TWA (ppm)</h3>
       <div class="ramp" id="ramp"></div>
       <div class="ends" id="ends"></div>
-      <div class="row"><span class="dot" style="background:#c62828"></span> Critical &ge;5 ppm</div>
-      <div class="row"><span class="dot" style="background:#ef6c00"></span> Warning &ge;1 ppm (TLV)</div>
+      <div class="row"><span class="dot" style="background:#c62828"></span> Experimental Extreme &ge;5 ppm</div>
+      <div class="row"><span class="dot" style="background:#ef6c00"></span> Review &ge;1 ppm</div>
       <div class="row"><span class="dot" style="background:#f9a825"></span> Elevated &ge;0.5 ppm</div>
       <div class="row"><span class="dot" style="background:#2e7d32"></span> Safe</div>
       <div class="row"><span class="dot" style="background:#616161"></span> Unreadable badge</div>
@@ -203,8 +203,8 @@
   <aside id="side">
     <div class="kpis">
       <div class="kpi"><i>Measurements in window</i><b id="kMeasurements">—</b><small id="kWorkers">&nbsp;</small></div>
-      <div class="kpi"><i>Peak TWA</i><b id="kPeak">—</b><small>ppm &middot; TLV 1.0</small></div>
-      <div class="kpi"><i>Over TLV</i><b id="kOver">—</b><small>measurements &ge;1 ppm</small></div>
+      <div class="kpi"><i>Peak 8-hour TWA</i><b id="kPeak">—</b><small>Highest recorded measurement</small></div>
+      <div class="kpi"><i>Total Cumulative Exposure</i><b id="kOver">—</b><small>ppm&middot;hr across window</small></div>
       <div class="kpi"><i>Read rate</i><b id="kRead">—</b><small id="kInvalid">&nbsp;</small></div>
     </div>
     <div id="panels"></div>
@@ -223,8 +223,8 @@ const qs = new URLSearchParams(location.search);
 const API = (qs.get('api') || '').replace(/\/$/, '');
 const MRPL_CENTRE = [12.9782, 74.8560];
 const REFRESH_MS = 30000;
-const BAND_COLOUR = {critical:'#c62828', warning:'#ef6c00', elevated:'#f9a825',
-                     safe:'#2e7d32', invalid:'#616161'};
+const BAND_COLOUR = {bin4:'#c62828', bin3:'#ef6c00', bin2:'#f9a825',
+                     bin1:'#2e7d32', invalid:'#616161'};
 let hours = 8, autoRefresh = true, timer = null, payload = null;
 let trendChartInstance = null;
 
@@ -232,6 +232,14 @@ const $ = id => document.getElementById(id);
 const fmt = (v,n=2) => (v===null||v===undefined||!isFinite(v)) ? '—' : Number(v).toFixed(n);
 const esc = s => String(s===null||s===undefined?'':s).replace(/[&<>"']/g,
   c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const formatWorker = s => {
+  const e = esc(s);
+  if (!e) return '?';
+  if (e.startsWith('DEMO-') || e === 'Test Worker' || e === 'GALLERY-UPLOAD') {
+    return `<span class="tag" style="background:#5a4a20;color:#f0cf8a;margin-right:4px">DEMO</span>${e}`;
+  }
+  return e;
+};
 
 if(typeof L === 'undefined'){
   document.querySelector('aside').innerHTML =
@@ -285,16 +293,15 @@ $('btnLight').addEventListener('click', ()=>{
      drawing the legend at hand-picked percentages - the obvious way to write this - makes the
      key quietly wrong, which is worse than having no key.
 
-   The square-root warp gives the sub-TLV region a bit under half the bar. That is where the
-   decisions actually live: 0.4 ppm and 0.9 ppm are both compliant but call for different
-   attention, and on a scale running linearly to 5 ppm they would be indistinguishable.
+   The square-root warp gives the lower-exposure region a bit under half the bar. That is where the
+   decisions actually live: 0.4 ppm and 0.9 ppm call for different attention.
    ========================================================================= */
 const VMAX = 5.0;
 const STOPS = [
   [0.00, [ 46,125, 50]],   // safe
   [0.50, [249,168, 37]],   // elevated
-  [1.00, [239,108,  0]],   // warning - the 1 ppm TLV-TWA
-  [5.00, [198, 40, 40]],   // critical, and the clamp
+  [1.00, [239,108,  0]],   // review threshold
+  [5.00, [198, 40, 40]],   // extreme
 ];
 const pos = v => Math.sqrt(Math.min(Math.max(v || 0, 0), VMAX) / VMAX);
 
@@ -315,7 +322,7 @@ function ramp(v){
 (function buildLegend(){
   $('ramp').style.background = 'linear-gradient(90deg,'
     + STOPS.map(([v,c]) => `rgb(${c.join(',')}) ${(100*pos(v)).toFixed(2)}%`).join(',') + ')';
-  const ticks = [[0,'0'], [0.5,'0.5'], [1.0,'1.0 TLV'], [5.0,'5+']];
+  const ticks = [[0,'0'], [0.5,'0.5'], [1.0,'1.0'], [5.0,'5+']];
   $('ends').innerHTML = ticks.map(([v,label],i)=>{
     const shift = i === 0 ? '0' : i === ticks.length-1 ? '-100%' : '-50%';
     return `<span style="position:absolute;left:${(100*pos(v)).toFixed(2)}%;`
@@ -399,8 +406,8 @@ function drawUnits(plant, rollup){
           ? `<hr style="border:0;border-top:1px solid #28323c;margin:9px 0">`
             + `<b>${roll.n_measurements}</b> measurements from <b>${roll.n_workers}</b> workers in this `
             + `window &middot; peak <b>${fmt(roll.peak_twa_ppm,3)}</b> ppm`
-            + (roll.n_over_tlv ? ` &middot; <span style="color:#ff9b6b">`
-                + `${roll.n_over_tlv} over TLV</span>` : '')
+            + (roll.n_elevated ? ` &middot; <span style="color:#ff9b6b">`
+                + `${roll.n_elevated} Elevated</span>` : '')
             + (roll.n_invalid ? ` &middot; ${roll.n_invalid} unreadable` : '')
           : `<hr style="border:0;border-top:1px solid #28323c;margin:9px 0">`
             + `<span style="color:#6b7885">No measurements here in this window — which is not the `
@@ -420,7 +427,7 @@ function drawPins(points){
     const col = BAND_COLOUR[p.band] || BAND_COLOUR.invalid;
     const mocked = !!p.location_mocked;
     const m = L.circleMarker([p.lat, p.lng], {
-      radius: p.band==='critical' ? 8 : p.band==='warning' ? 7 : 6,
+      radius: p.band==='bin4' ? 8 : p.band==='bin3' ? 7 : 6,
       color: mocked ? col : '#0b0e11',
       weight: mocked ? 2 : 1.4,
       dashArray: mocked ? '3 3' : null,
@@ -442,10 +449,10 @@ function drawPins(points){
 
 function popupForMeasurement(p){
   const col = BAND_COLOUR[p.band] || BAND_COLOUR.invalid;
-  const t = (p.measurementned_at||'').replace('T',' ').replace('Z',' UTC');
+  const t = (p.measured_at||'').replace('T',' ').replace('Z',' UTC');
   let h = `<div style="display:flex;align-items:center;gap:8px">
       <span style="width:10px;height:26px;border-radius:3px;background:${col}"></span>
-      <div><b style="font-size:14px">${esc(p.worker_id||'?')}</b>
+      <div><b style="font-size:14px">${formatWorker(p.worker_id)}</b>
       <div style="color:#6b7885;font-size:11px">${esc(t)}</div></div>
       <b style="margin-left:auto;font-family:var(--mono);font-size:16px">
         ${p.ok?fmt(p.twa_ppm,3):'—'}</b></div>`;
@@ -516,12 +523,17 @@ function drawSide(d){
   const st = d.stats || {};
   $('kMeasurements').textContent  = st.n ?? 0;
   $('kWorkers').textContent = `${st.n_workers ?? 0} workers · ${d.n_located ?? 0} located`;
-  $('kPeak').textContent   = fmt(st.peak_twa, 3);
+  $('kPeak').textContent   = (st.peak_twa !== null && st.peak_twa !== undefined) ? fmt(st.peak_twa, 3) + ' ppm' : '—';
   $('kPeak').style.color   = (st.peak_twa >= 5) ? '#ff8a80'
                            : (st.peak_twa >= 1) ? '#ffab70' : '';
-  const over = (st.n_critical||0) + (st.n_warning||0);
-  $('kOver').textContent   = over;
-  $('kOver').style.color   = over ? '#ff9b6b' : '';
+  let sumDose = 0;
+  if (d.measurementHistory) {
+      d.measurementHistory.forEach(m => {
+          sumDose += (m.dose_ppm_hr || 0);
+      });
+  }
+  $('kOver').textContent   = fmt(sumDose, 1);
+  $('kOver').style.color   = sumDose > 0 ? '#cfdae4' : '';
   $('kRead').textContent   = st.read_rate === null || st.read_rate === undefined
                              ? '—' : (100*st.read_rate).toFixed(0) + '%';
   $('kRead').style.color   = (st.read_rate !== null && st.read_rate < 0.9) ? '#ffab70' : '';
@@ -537,7 +549,7 @@ function drawSide(d){
       <h2 style="color:var(--accent); font-weight:bold;">Latest Measurement</h2>
       <div style="padding:10px 0; font-size:13px;">
         <div style="display:flex; justify-content:space-between; margin-bottom:8px">
-          <span style="color:var(--ink-dim)">Worker:</span> <strong>${esc(m.worker_name || m.worker_id)}</strong>
+          <span style="color:var(--ink-dim)">Worker:</span> <strong>${formatWorker(m.worker_name || m.worker_id)}</strong>
         </div>
         <div style="display:flex; justify-content:space-between; margin-bottom:8px">
           <span style="color:var(--ink-dim)">Zone:</span> <span>${esc(m.zone || 'Unknown')}</span>
@@ -574,7 +586,7 @@ function drawSide(d){
           ${d.measurementHistory.map(m => {
             const isWarn = m.status.toLowerCase() !== 'safe' && m.status.toLowerCase() !== 'normal';
             return `<tr style="border-bottom:1px solid var(--line)">
-              <td style="padding:6px 0">${esc(m.worker_name || m.worker_id)}</td>
+              <td style="padding:6px 0">${formatWorker(m.worker_name || m.worker_id)}</td>
               <td style="padding:6px 0; font-family:var(--mono)">${fmt(m.dose_ppm_hr,1)}</td>
               <td style="padding:6px 0; font-family:var(--mono); color:${isWarn?'var(--warning)':'var(--ink)'}">${fmt(m.twa_ppm,1)}</td>
             </tr>`;
@@ -588,9 +600,9 @@ function drawSide(d){
   if (d.measurementHistory && d.measurementHistory.length > 0) {
     const concerns = d.measurementHistory.filter(m => m.twa_ppm >= 5 || m.dose_ppm_hr >= 10);
     if (concerns.length > 0) {
-      panels.push(`<section style="background:var(--panel-2); border-left:3px solid var(--critical)">
-        <h2 style="color:var(--critical); font-weight:bold;">Concerns / Attention</h2>
-        <p class="note" style="color:var(--ink)">Readings exceeding safety thresholds (TWA &ge; 5 ppm or Dose &ge; 10 ppm·hr)</p>
+      panels.push(`<section style="background:var(--panel-2); border-left:3px solid var(--warning)">
+        <h2 style="color:var(--warning); font-weight:bold;">Measurements Requiring Review</h2>
+        <p class="note" style="color:var(--ink)">Measurements are flagged using project screening logic; they are not a substitute for certified H2S monitoring.</p>
         <table style="width:100%; border-collapse:collapse; font-size:12px; margin-top:8px;">
           <thead style="text-align:left; color:var(--ink-faint); border-bottom:1px solid var(--line)">
             <tr>
@@ -602,9 +614,9 @@ function drawSide(d){
           <tbody>
             ${concerns.map(m => {
               return `<tr style="border-bottom:1px solid var(--line)">
-                <td style="padding:6px 0">${esc(m.worker_name || m.worker_id)}</td>
+                <td style="padding:6px 0">${formatWorker(m.worker_name || m.worker_id)}</td>
                 <td style="padding:6px 0">${esc(m.zone || 'Unknown')}</td>
-                <td style="padding:6px 0; font-family:var(--mono); color:var(--critical); font-weight:bold">${fmt(m.twa_ppm,1)}</td>
+                <td style="padding:6px 0; font-family:var(--mono); color:var(--warning); font-weight:bold">${fmt(m.twa_ppm,1)}</td>
               </tr>`;
             }).join('')}
           </tbody>
@@ -623,7 +635,7 @@ function drawSide(d){
 
   // ---- clusters -------------------------------------------------------
   const cl = d.clusters || [];
-  panels.push(`<section><h2>Areas to look at (${cl.length})</h2>
+  panels.push(`<section><h2>Areas with concentrated exposure records (${cl.length})</h2>
     <p class="note">Groups of measurements at or above 0.5 ppm TWA within 120 m of each other.
       Worker count matters as much as measurement count: several readings from one person points at
       that person's task or badge, several people points at the area.</p>
@@ -644,7 +656,7 @@ function drawSide(d){
 
   // ---- workers --------------------------------------------------------
   const w = (d.workers || []).slice(0, 40);
-  panels.push(`<section><h2>Workers (${(d.workers||[]).length})</h2>
+  panels.push(`<section><h2>Workers by Peak Recorded TWA (${(d.workers||[]).length})</h2>
     <p class="note">Ranked by peak TWA in the window. The unreadable column is deliberately
       next to the exposure figures — a worker whose badge keeps failing has no record at all.</p>
     <table><thead><tr><th>Worker</th><th class="r">Peak</th><th class="r">Cumul.</th>
@@ -652,7 +664,7 @@ function drawSide(d){
     ${w.length ? w.map(r=>`<tr data-worker="${esc(r.worker_id)}">
         <td><span class="sw" style="background:${
             BAND_COLOUR[bandOf(r.peak_twa_ppm, r.n_measurements > (r.n_invalid||0))]}"></span>
-          ${esc(r.worker_id)}</td>
+          ${formatWorker(r.worker_id)}</td>
         <td class="r ${r.peak_twa_ppm>=1?'over':''}">${fmt(r.peak_twa_ppm,3)}</td>
         <td class="r">${fmt(r.cumulative_ppm_hr,1)}</td>
         <td class="r">${r.n_measurements}${r.n_invalid?`<span class="bad"> +${r.n_invalid}✕</span>`:''}</td>
@@ -667,13 +679,13 @@ function drawSide(d){
       into the nearest unit — attributing a roadside measurement to a process area would put a finding
       on the wrong unit's record.</p>
     <table><thead><tr><th>Unit</th><th class="r">Peak</th><th class="r">Workers</th>
-      <th class="r">&ge;TLV</th></tr></thead><tbody>
+      <th class="r">Elevated / Review</th></tr></thead><tbody>
     ${u.length ? u.map(r=>`<tr data-unit="${esc(r.unit)}">
         <td><span class="sw" style="background:${BAND_COLOUR[r.band]||'#616161'}"></span>
           ${esc(r.unit)}${r.sour_service?'':' <span style="color:#6b7885">·</span>'}</td>
         <td class="r ${r.peak_twa_ppm>=1?'over':''}">${fmt(r.peak_twa_ppm,3)}</td>
         <td class="r">${r.n_workers}</td>
-        <td class="r ${r.n_over_tlv?'over':''}">${r.n_over_tlv||'—'}</td>
+        <td class="r ${r.n_elevated?'over':''}">${r.n_elevated||'—'}</td>
       </tr>`).join('')
       : `<tr><td colspan="4" style="color:#6b7885">No located measurements in this window.</td></tr>`}
     </tbody></table></section>`);
@@ -729,14 +741,14 @@ function drawTrendChart(d) {
   }
   
   d.points.forEach(p => {
-    if (!p.measurementned_at) return;
-    const ptTime = new Date(p.measurementned_at).getTime();
+    if (!p.measured_at) return;
+    const ptTime = new Date(p.measured_at).getTime();
     if (ptTime < startTime.getTime()) return;
     const b = Math.floor((ptTime - startTime.getTime()) / stepMs);
     if (b >= 0 && b < buckets) {
-      if (p.band === 'warning' || p.band === 'critical' || p.band === 'elevated') {
+      if (p.band === 'bin3' || p.band === 'bin4' || p.band === 'bin2') {
         warnData[b]++;
-      } else if (p.band === 'safe') {
+      } else if (p.band === 'bin1') {
         safeData[b]++;
       }
     }

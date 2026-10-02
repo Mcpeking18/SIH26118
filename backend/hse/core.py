@@ -216,15 +216,15 @@ def bounds_of(points, pad_m: float = 250.0) -> dict:
 # Risk banding
 # ---------------------------------------------------------------------------
 
-RISK_BANDS = (
-    {"key": "experimental_extreme", "label": "Experimental Extreme", "colour": "#c62828",
-     "min_twa": 5.0, "action": "Experimental calibration indicates extreme colorimetric shift. Review immediately."},
-    {"key": "review", "label": "Review", "colour": "#ef6c00",
-     "min_twa": 1.0, "action": "Experimental calibration indicates potential cumulative exposure. Review record."},
-    {"key": "attention", "label": "Attention", "colour": "#f9a825",
-     "min_twa": 0.5, "action": "Trace colorimetric change detected."},
-    {"key": "normal", "label": "Normal", "colour": "#2e7d32",
-     "min_twa": 0.0, "action": "No significant colorimetric change detected."},
+VISUALIZATION_BINS = (
+    {"key": "bin4", "label": "High Relative Reading", "colour": "#c62828",
+     "min_twa": 5.0, "action": "Upper visualization bin."},
+    {"key": "bin3", "label": "Moderate-High Relative Reading", "colour": "#ef6c00",
+     "min_twa": 1.0, "action": "Upper-mid visualization bin."},
+    {"key": "bin2", "label": "Moderate Relative Reading", "colour": "#f9a825",
+     "min_twa": 0.5, "action": "Lower-mid visualization bin."},
+    {"key": "bin1", "label": "Low Relative Reading", "colour": "#2e7d32",
+     "min_twa": 0.0, "action": "Lower visualization bin."},
 )
 
 _INVALID_BAND = {"key": "invalid", "label": "Unreadable", "colour": "#616161",
@@ -237,10 +237,10 @@ def band_for(twa_ppm, ok: bool = True) -> dict:
     if not ok or twa_ppm is None or not math.isfinite(float(twa_ppm)):
         return _INVALID_BAND
     v = float(twa_ppm)
-    for b in RISK_BANDS:
+    for b in VISUALIZATION_BINS:
         if v >= b["min_twa"]:
             return b
-    return RISK_BANDS[-1]
+    return VISUALIZATION_BINS[-1]
 
 
 def band_for_dose(dose_ppm_hr, shift_hours: float = 8.0, ok: bool = True) -> dict:
@@ -466,7 +466,7 @@ def _cluster_note(unit, n_workers: int, peak_twa: float) -> str:
            if n_workers > 1 else
            "A single worker, so this may be that person's task or PPE rather than the "
            "area - confirm with a second badge before acting on the location.")
-    urgency = ("Peak is above the 5 ppm STEL-equivalent band: act now. " if peak_twa >= 5.0
+    urgency = ("Peak reading is above the experimental extreme threshold: review. " if peak_twa >= 5.0
                else "")
     return f"{urgency}{who} {site}"
 
@@ -515,7 +515,7 @@ def unit_rollup(measurements) -> list:
             "n_workers": len(b["workers"]),
             "peak_twa_ppm": None if not twas else round(peak, 3),
             "mean_twa_ppm": None if not twas else round(sum(twas) / len(twas), 3),
-            "n_over_tlv": sum(1 for v in twas if v >= 1.0),
+            "n_elevated": sum(1 for v in twas if v >= 1.0),
             "band": band_for(peak, ok=bool(twas))["key"],
             "sour_service": b["unit"] in H2S_UNITS,
         }
@@ -571,7 +571,7 @@ def heatmap_payload(measurements, **grid_kw) -> dict:
         "clusters": clusters,
         "units": unit_rollup(measurements),
         "plant": MRPL.as_dict(),
-        "bands": list(RISK_BANDS),
+        "bands": list(VISUALIZATION_BINS),
         "n_measurements": len(pts),
         "n_located": sum(1 for p in pts if p["lat"] is not None and p["lng"] is not None),
         "measurementHistory": history,

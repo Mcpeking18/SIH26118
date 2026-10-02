@@ -190,7 +190,7 @@ class MeasurementStore:
                "SUM(CASE WHEN ok=1 THEN 0 ELSE 1 END) AS n_invalid,",
                "MAX(CASE WHEN ok=1 THEN twa_ppm END) AS peak_twa_ppm,",
                "AVG(CASE WHEN ok=1 THEN twa_ppm END) AS mean_twa_ppm,",
-               "SUM(CASE WHEN ok=1 AND twa_ppm >= 1.0 THEN 1 ELSE 0 END) AS n_over_tlv,",
+               "SUM(CASE WHEN ok=1 AND twa_ppm >= 1.0 THEN 1 ELSE 0 END) AS n_elevated,",
                "SUM(CASE WHEN ok=1 THEN dose_ppm_hr ELSE 0 END) AS cumulative_ppm_hr,",
                "MAX(measured_at) AS last_measurement_at",
                "FROM measurements WHERE 1=1"]
