@@ -216,35 +216,20 @@ def bounds_of(points, pad_m: float = 250.0) -> dict:
 # Risk banding
 # ---------------------------------------------------------------------------
 
-#: Bands in TWA terms against the 1 ppm ACGIH TLV-TWA, worst first.
-#:
-#: The engine already returns a per-scan verdict from
-#: :class:`engine.dosimetry.ExposureLimits`; this is the *map's* banding, which needs a
-#: fourth level the single-scan verdict does not have. A worker at 0.6 ppm TWA is compliant
-#: and must not be shown as a violation, but an area where several badges land at 0.6 is
-#: exactly what an HSE lead wants to look at before it becomes an exceedance. So ELEVATED
-#: exists between SAFE and WARNING, and it is explicitly labelled as sub-limit.
 RISK_BANDS = (
-    {"key": "critical", "label": "Critical", "colour": "#c62828",
-     "min_twa": 5.0, "action": "Evacuate the area, escalate to the shift in-charge, and "
-                              "send the worker for medical assessment now."},
-    {"key": "warning", "label": "Warning", "colour": "#ef6c00",
-     "min_twa": 1.0, "action": "Over the 1 ppm TLV-TWA. Withdraw the worker from sour "
-                              "service, survey the area with a portable monitor, and "
-                              "investigate the source before the next shift."},
-    {"key": "elevated", "label": "Elevated", "colour": "#f9a825",
-     "min_twa": 0.5, "action": "Below the limit but trending. Worth a walkdown of the "
-                              "area and a look at whether the same unit keeps appearing."},
-    {"key": "safe", "label": "Safe", "colour": "#2e7d32",
-     "min_twa": 0.0, "action": "Within limits. File the record."},
+    {"key": "experimental_extreme", "label": "Experimental Extreme", "colour": "#c62828",
+     "min_twa": 5.0, "action": "Experimental calibration indicates extreme colorimetric shift. Review immediately."},
+    {"key": "review", "label": "Review", "colour": "#ef6c00",
+     "min_twa": 1.0, "action": "Experimental calibration indicates potential cumulative exposure. Review record."},
+    {"key": "attention", "label": "Attention", "colour": "#f9a825",
+     "min_twa": 0.5, "action": "Trace colorimetric change detected."},
+    {"key": "normal", "label": "Normal", "colour": "#2e7d32",
+     "min_twa": 0.0, "action": "No significant colorimetric change detected."},
 )
 
 _INVALID_BAND = {"key": "invalid", "label": "Unreadable", "colour": "#616161",
                  "min_twa": float("nan"),
-                 "action": "The scan did not produce a defensible reading. Rescan the "
-                           "badge following the on-screen hint; if it fails again the "
-                           "badge goes to the lab, and the worker is treated as "
-                           "unmonitored for the shift, which is itself a finding."}
+                 "action": "The scan did not produce a defensible reading. Scan was rejected."}
 
 
 def band_for(twa_ppm, ok: bool = True) -> dict:

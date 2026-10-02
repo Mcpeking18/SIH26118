@@ -52,8 +52,8 @@ object Dosimetry {
     val CHROMA_LIMIT_SLOPE = 0.4
     val PAD_LOCUS_UNIT = doubleArrayOf(-0.99621391, 0.07134013, 0.0496833)
     val PAD_STAGE_ANCHORS_LAB: Array<DoubleArray> by lazy {
-        Array(com.mrpl.wristband.config.BadgeV2Spec.PAD_STAGE_SRGB.size) { i ->
-            val rgb = DoubleArray(3) { j -> com.mrpl.wristband.config.BadgeV2Spec.PAD_STAGE_SRGB[i][j].toDouble() }
+        Array(com.mrpl.wristband.config.BadgeV2Spec.EXPERIMENTAL_PAD_STAGE_SRGB.size) { i ->
+            val rgb = DoubleArray(3) { j -> com.mrpl.wristband.config.BadgeV2Spec.EXPERIMENTAL_PAD_STAGE_SRGB[i][j].toDouble() }
             com.mrpl.wristband.color.Colorimetry.xyzToLab(com.mrpl.wristband.color.Colorimetry.linearRgbToXyz(com.mrpl.wristband.color.Colorimetry.srgbToLinear(rgb)))
         }
     }

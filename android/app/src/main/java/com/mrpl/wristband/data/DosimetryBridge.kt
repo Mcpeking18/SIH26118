@@ -84,6 +84,7 @@ object DosimetryBridge {
 
                 val debugStr = """
                     CCM: ${normalizedResult.mode}
+                    Raw RGB: ${badgeSamples.pad?.meanLinear?.map { "%.3f".format(it) }?.joinToString()}
                     Pad RGB: ${normalizedResult.padLinear?.map { "%.3f".format(it) }?.joinToString()}
                     Pad Lab: ${normalizedResult.padLab?.map { "%.2f".format(it) }?.joinToString()}
                     Base Lab: ${normalizedResult.baselineLab?.map { "%.2f".format(it) }?.joinToString()}
