@@ -5,53 +5,55 @@
   <i>Mangalore Refinery and Petrochemicals Limited (MRPL)</i><br><br>
 </div>
 
-An innovative, purely passive approach to H₂S dosimetry. A worker wears a wristband with absolutely no electronics. A **CuSO₄·5H₂O (Copper II Sulfate)** sensing strip on Whatman paper (under an ePTFE membrane) reacts with ambient hydrogen sulphide, darkening in proportion to the accumulated dose. 
+## 📖 Abstract
 
-At the end of the shift, a team leader photographs the wristband using our **Android App**. The app uses Computer Vision (OpenCV) to rectify the image, normalize the illumination and color against reference patches, calculate the accumulated dose (in `ppm·hr`) and the 8-hour Time-Weighted Average (`TWA ppm`), and evaluates it against safety limits.
+Hydrogen sulfide (H₂S) is a routine hazard in oil refineries, sewers, wastewater, and biogas plants. At higher concentrations, it causes olfactory fatigue, meaning the natural odor warning vanishes as danger escalates. The challenge is sharpest in refinery sour-service areas classified as **ATEX or PESO Zone 0**, where explosive atmospheres exist continuously. 
 
-The wearable is completely passive because it has to be: sour-service areas in refineries are ATEX/PESO Zone 0, where intrinsically safe electronic dosimeters are expensive and non-certified ones are strictly forbidden. **All the intelligence lives on the smartphone and the cloud.**
+In these zones, traditional electronic detectors are either prohibited or require costly intrinsic-safety certification. Even certified units depend on batteries and frequent calibration, leading to them being shared among teams. As a result, readings describe the last person holding the detector—leaving many contract crews unmeasured. Existing passive badges exist, but require workers to judge color changes by eye against a printed ladder, which varies drastically with lighting and leaves zero digital record.
 
----
-
-## 🌟 Key Achievements & What We Built
-
-We took the initial Python mathematical prototypes and scaled them into a complete, deployment-ready software ecosystem:
-
-### 📱 1. Native Android Application (Kotlin + OpenCV)
-The mathematical Python prototypes were successfully ported to a native, performant Android app:
-- **ArUco Detection & Rectification**: Warps the wristband photo into a flat plane regardless of the angle it was taken at.
-- **Illumination & Color Normalization**: Uses Matrix Polynomial Regression (and Von Kries fallbacks) against printed reference patches on the wristband to ensure the exact same reading regardless of the smartphone's camera, flash, or environmental lighting.
-- **Scientific Dosimetry**: Calculates `Delta L*` (Lightness shift) and `Delta E00` to measure the chemical reaction and extract exact `ppm·hr` values without "fudging" numbers.
-- **Direct Cloud Sync**: The app instantly pushes finalized measurement records to the centralized HSE dashboard.
-
-### 🌐 2. Centralized HSE Dashboard (Python FastAPI + SQLite)
-A robust, lightweight backend for HSE (Health, Safety, and Environment) supervisors:
-- **API Server**: A `FastAPI` service with `Pydantic` models and `SQLite` that safely ingests `POST /api/measurements` from all active smartphones on the field.
-- **Interactive Web UI**: A beautiful, dark-themed industrial dashboard that focuses on clarity. Shows the **Latest Measurement**, an Exposure History log, and an interactive **Leaflet Map** to quickly identify H₂S risk clusters in specific refinery zones (like the SWS or SRU).
+**Our Proposed Solution:** An intrinsically safe, battery-free wristband dosimeter coupled with an offline smartphone computer-vision application to accurately digitize and log H₂S exposure.
 
 ---
 
-## 🏗️ Architecture
+## 🌟 Key Features & Innovations
+
+### 1. 🛡️ Battery-Free Intrinsically Safe Wearable (Zone 0 Compliant)
+The physical wristband contains absolutely no electronics. It holds a **CuSO₄·5H₂O (Copper II Sulfate)** sensing strip on Whatman paper under a diffusion-controlling ePTFE membrane. It is completely intrinsically safe by elimination, not mitigation.
+
+### 2. 📱 Computer Vision Dose Readout (Native Android App)
+At the end of a shift, a team leader photographs the wristband using our Android App (Kotlin + OpenCV). The application performs:
+- **ArUco Fiducial Rectification:** Warps the badge into a flat plane regardless of camera angle.
+- **Dynamic Illumination Normalization:** Uses printed reference patches to apply Matrix Polynomial Regression and Von Kries transformations to completely neutralize camera auto-white-balance, flash variations, and HDR tone mapping.
+- **Scientific Colorimetry:** Measures chemical darkening via `Delta L*` (Lightness) and computes the exact accumulated dose (`ppm·hr`) and the 8-hour Time-Weighted Average (`TWA ppm`).
+
+### 3. 🌐 Centralized HSE Cloud Dashboard (Python FastAPI)
+The native app automatically syncs exposure records to a centralized HSE (Health, Safety, and Environment) dashboard.
+- Built with **Python, FastAPI, and SQLite**.
+- Industrial dark-themed web interface highlighting the **Latest Measurements**, historical exposure logs, and an interactive **Leaflet Map** to pinpoint H₂S risks in specific refinery areas (e.g., SWS, SRU).
+
+---
+
+## 🏗️ Repository Architecture
 
 - **`android/`**: The native Kotlin + OpenCV application. Contains the CV pipeline, dosimetry math, and UI layers.
   - *Note: The massive OpenCV Android SDK (version 5.0.0+) is NOT tracked in Git. You must download the official OpenCV Android SDK and extract the `sdk` folder directly into `android/opencv/`.*
 - **`backend/`**: The Python backend server and dashboard.
-  - `hse/api.py`: FastAPI routes and SQLite integrations.
+  - `hse/api.py`: FastAPI endpoints that safely ingest `POST /api/measurements` from field smartphones.
   - `dashboard/index.html`: The HTML/JS/CSS frontend for the dashboard.
-- **`reference/python/`**: The golden mathematical reference implementation (the origin of our formulas). 
+- **`reference/python/`**: The golden mathematical reference implementation (the origin of our computer vision and calibration formulas). 
+- **`H2S_Dosimeter_White_Paper_Final.docx`**: Our complete engineering white paper detailing the physical chemistry, chassis materials (medical-grade silicone), and pipeline math.
 
 ---
 
-## 🧪 Chemistry and Calibration Status 
+## 🧪 Chemistry and Calibration
 
-**We explicitly use CuSO₄, not Lead Acetate.** While lead acetate is a common colorimetric agent, it introduces severe heavy metal disposal issues and toxicity.
+**Why Copper Sulfate?** We explicitly use CuSO₄ instead of Lead Acetate to completely eliminate heavy metal toxicity and disposal hazards.
 
-**Calibration Note:** 
-Currently, the pipeline uses a synthetic placeholder calibration model for software testing. While preliminary lab tests using liquid Na₂S proved the progressive color change of CuSO₄, *liquid testing is not gaseous H₂S calibration.* 
+**Calibration Architecture:** The software pipeline calculates exact CIELAB metrics (`L*a*b*`), but currently uses a synthetic placeholder calibration curve to map `Delta L*` to `ppm·hr`. Before actual field deployment, this curve will be easily updated by swapping a single configuration profile with data from certified H₂S gas chamber testing—requiring zero code changes to the app itself.
 
-Before field use, the calibration curve must be experimentally fitted against certified H₂S atmospheres at known concentration-time products. The software architecture strictly decouples this: when real lab data arrives, we simply update the configuration files. No computer vision or Android code needs to be rewritten.
+---
 
-## 🚀 Quick Start (Dashboard & API)
+## 🚀 Quick Start (Running the Dashboard Locally)
 
 Run the FastAPI backend with Uvicorn (requires `fastapi`, `uvicorn`, `pydantic`):
 
@@ -64,7 +66,7 @@ python -m uvicorn backend.hse.api:app --port 8000
 ```
 Open your browser to `http://127.0.0.1:8000/dashboard/index.html` to view the HSE Dashboard!
 
-*(To seed the dashboard with 15 synthetic scans for testing, run `POST http://127.0.0.1:8000/api/demo/seed?n=15`)*
+*(To seed the dashboard with synthetic scans for testing, run `POST http://127.0.0.1:8000/api/demo/seed?n=15`)*
 
 ---
 
