@@ -1,0 +1,81 @@
+%% ==========================================
+%% CHART 1: APPLICATION FLOW
+%% ==========================================
+flowchart TD
+    A([Open H₂S Dosimeter App])
+    B[Worker / Operator Login]
+    C[Scan]
+    D[Position Wristband<br/>Inside Alignment Guide]
+    E[Camera Preview]
+    F{Badge Detected?}
+
+    A --> B --> C --> D --> E --> F
+    F -- No --> D
+    F -- Yes --> G[Trigger CV Pipeline]
+
+    R[Exposure Result Ready] --> S[Display Exposure Result]
+    S --> T[Save Measurement Locally]
+    T --> U[Sync Derived Result<br/>to HSE Dashboard]
+
+    C --> V[History]
+    C --> W[Map]
+    C --> X[Profile]
+
+    classDef start fill:#e8f4ff,stroke:#2196f3,stroke-width:2px,color:#111;
+    classDef screen fill:#f7f9fc,stroke:#607d8b,stroke-width:1.5px,color:#111;
+    classDef process fill:#fff8e8,stroke:#ff9800,stroke-width:1.5px,color:#111;
+    classDef decision fill:#fff3cd,stroke:#d99a00,stroke-width:2px,color:#111;
+
+    class A start;
+    class B,C,D,E,S,T,V,W,X screen;
+    class F decision;
+    class G,R,U process;
+
+
+%% ==========================================
+%% CHART 2: ON-DEVICE COMPUTER VISION (CV)
+%% ==========================================
+flowchart LR
+    G[Capture Frame]
+    H[Detect 4 ArUco<br/>Fiducials]
+    I[Perspective<br/>Rectification]
+    J[Extract ROIs<br/>12 Patches + Sensor Pad]
+    K[20% Trimmed Mean<br/>Linearised Pixels]
+    L[Flat-Field +<br/>Ridge CCM]
+    M[CIELAB<br/>ΔL*]
+    N{Quality Gates<br/>Passed?}
+    O[REJECT SCAN<br/>Show Correction Guidance]
+    P[Proceed to Dosimetry]
+
+    G --> H --> I --> J --> K --> L --> M --> N
+    N -- Fail --> O
+    N -- Pass --> P
+
+    classDef process fill:#fff8e8,stroke:#ff9800,stroke-width:1.5px,color:#111;
+    classDef decision fill:#fff3cd,stroke:#d99a00,stroke-width:2px,color:#111;
+    classDef reject fill:#fff0f0,stroke:#e53935,stroke-width:2px,color:#111;
+    classDef pass fill:#eaf7ee,stroke:#2e7d32,stroke-width:2px,color:#111;
+
+    class G,H,I,J,K,L,M process;
+    class N decision;
+    class O reject;
+    class P pass;
+
+
+%% ==========================================
+%% CHART 3: DOSIMETRY
+%% ==========================================
+flowchart LR
+    N[Quality Gates Passed]
+    P[Provisional<br/>Calibration Model]
+    Q[Cumulative Dose<br/>ppm·hr]
+    R[8-Hour TWA<br/>ppm]
+    S[Final Exposure Result]
+
+    N --> P --> Q --> R --> S
+
+    classDef process fill:#fff8e8,stroke:#ff9800,stroke-width:1.5px,color:#111;
+    classDef result fill:#eaf7ee,stroke:#2e7d32,stroke-width:2px,color:#111;
+
+    class N,P,Q,R process;
+    class S result;
