@@ -6,7 +6,7 @@ server and any offline analysis, and can be checked without either of them runni
 
 WHAT THIS LAYER IS ALLOWED TO CLAIM
 -----------------------------------
-It turns a set of point measurements into a map. It is worth being precise about what that map is,
+It turns a set of point scans into a map. It is worth being precise about what that map is,
 because a smooth coloured surface is extremely persuasive and this one is an interpolation
 between sparse badge readings, not a gas dispersion model.
 
@@ -20,7 +20,7 @@ triage* aid: it ranks areas for attention and it makes a spatial pattern in the 
 record visible. Fixed-point gas detectors, and a survey with a portable monitor, remain the
 instruments that tell you where a leak is.
 
-The functions below therefore report their own support - how many measurements, how far away the
+The functions below therefore report their own support - how many scans, how far away the
 nearest one was - alongside every interpolated value, so the UI can grey out a cell that is
 being extrapolated from one badge 400 m away instead of colouring it confidently.
 """
@@ -35,7 +35,7 @@ __all__ = [
     "PlantUnit", "Plant", "MRPL", "H2S_UNITS",
     "haversine_m", "local_xy_m", "bounds_of",
     "RISK_BANDS", "band_for", "band_for_dose",
-    "idw_grid", "cluster_measurements", "unit_rollup", "heatmap_payload",
+    "idw_grid", "cluster_scans", "unit_rollup", "heatmap_payload",
 ]
 
 
@@ -216,20 +216,35 @@ def bounds_of(points, pad_m: float = 250.0) -> dict:
 # Risk banding
 # ---------------------------------------------------------------------------
 
-VISUALIZATION_BINS = (
-    {"key": "bin4", "label": "High Relative Reading", "colour": "#c62828",
-     "min_twa": 5.0, "action": "Upper visualization bin."},
-    {"key": "bin3", "label": "Moderate-High Relative Reading", "colour": "#ef6c00",
-     "min_twa": 1.0, "action": "Upper-mid visualization bin."},
-    {"key": "bin2", "label": "Moderate Relative Reading", "colour": "#f9a825",
-     "min_twa": 0.5, "action": "Lower-mid visualization bin."},
-    {"key": "bin1", "label": "Low Relative Reading", "colour": "#2e7d32",
-     "min_twa": 0.0, "action": "Lower visualization bin."},
+#: Bands in TWA terms against the 1 ppm ACGIH TLV-TWA, worst first.
+#:
+#: The engine already returns a per-scan verdict from
+#: :class:`engine.dosimetry.ExposureLimits`; this is the *map's* banding, which needs a
+#: fourth level the single-scan verdict does not have. A worker at 0.6 ppm TWA is compliant
+#: and must not be shown as a violation, but an area where several badges land at 0.6 is
+#: exactly what an HSE lead wants to look at before it becomes an exceedance. So ELEVATED
+#: exists between SAFE and WARNING, and it is explicitly labelled as sub-limit.
+RISK_BANDS = (
+    {"key": "critical", "label": "Critical", "colour": "#c62828",
+     "min_twa": 5.0, "action": "Evacuate the area, escalate to the shift in-charge, and "
+                              "send the worker for medical assessment now."},
+    {"key": "warning", "label": "Warning", "colour": "#ef6c00",
+     "min_twa": 1.0, "action": "Over the 1 ppm TLV-TWA. Withdraw the worker from sour "
+                              "service, survey the area with a portable monitor, and "
+                              "investigate the source before the next shift."},
+    {"key": "elevated", "label": "Elevated", "colour": "#f9a825",
+     "min_twa": 0.5, "action": "Below the limit but trending. Worth a walkdown of the "
+                              "area and a look at whether the same unit keeps appearing."},
+    {"key": "safe", "label": "Safe", "colour": "#2e7d32",
+     "min_twa": 0.0, "action": "Within limits. File the record."},
 )
 
 _INVALID_BAND = {"key": "invalid", "label": "Unreadable", "colour": "#616161",
                  "min_twa": float("nan"),
-                 "action": "The scan did not produce a defensible reading. Scan was rejected."}
+                 "action": "The scan did not produce a defensible reading. Rescan the "
+                           "badge following the on-screen hint; if it fails again the "
+                           "badge goes to the lab, and the worker is treated as "
+                           "unmonitored for the shift, which is itself a finding."}
 
 
 def band_for(twa_ppm, ok: bool = True) -> dict:
@@ -237,10 +252,10 @@ def band_for(twa_ppm, ok: bool = True) -> dict:
     if not ok or twa_ppm is None or not math.isfinite(float(twa_ppm)):
         return _INVALID_BAND
     v = float(twa_ppm)
-    for b in VISUALIZATION_BINS:
+    for b in RISK_BANDS:
         if v >= b["min_twa"]:
             return b
-    return VISUALIZATION_BINS[-1]
+    return RISK_BANDS[-1]
 
 
 def band_for_dose(dose_ppm_hr, shift_hours: float = 8.0, ok: bool = True) -> dict:
@@ -255,19 +270,7 @@ def band_for_dose(dose_ppm_hr, shift_hours: float = 8.0, ok: bool = True) -> dic
 # Interpolation
 # ---------------------------------------------------------------------------
 
-def _ensure_coords(s: dict):
-    lat, lng = s.get("lat"), s.get("lng")
-    if lat is None or lng is None:
-        u_code = s.get("unit") or s.get("unit_code") or s.get("zone")
-        if u_code:
-            try:
-                u = MRPL.unit(u_code)
-                return u.lat, u.lng
-            except KeyError:
-                pass
-    return lat, lng
-
-def idw_grid(measurements, nx: int = 44, ny: int = 44, power: float = 2.0,
+def idw_grid(scans, nx: int = 44, ny: int = 44, power: float = 2.0,
              radius_m: float = 350.0, smoothing_m: float = 25.0,
              bounds: dict = None, value_key: str = "twa_ppm") -> dict:
     """Inverse-distance-weighted surface over the scan points.
@@ -303,8 +306,8 @@ def idw_grid(measurements, nx: int = 44, ny: int = 44, power: float = 2.0,
     pattern, and never as a concentration field.
     """
     pts = []
-    for s in measurements:
-        lat, lng = _ensure_coords(s)
+    for s in scans:
+        lat, lng = s.get("lat"), s.get("lng")
         v = s.get(value_key)
         if lat is None or lng is None or v is None:
             continue
@@ -327,7 +330,7 @@ def idw_grid(measurements, nx: int = 44, ny: int = 44, power: float = 2.0,
         "lat": [round(float(v), 6) for v in glat],
         "lng": [round(float(v), 6) for v in glng],
         "values": [], "support": [], "nearest_m": [],
-        "note": ("Inverse-distance interpolation between badge measurements. A screening aid, not "
+        "note": ("Inverse-distance interpolation between badge scans. A screening aid, not "
                  "a dispersion model: it cannot exceed the highest badge it is drawn from, "
                  "and cells with no scan within the radius are returned null."),
     }
@@ -347,8 +350,8 @@ def idw_grid(measurements, nx: int = 44, ny: int = 44, power: float = 2.0,
     gx, gy = local_xy_m(GLAT, GLNG, lat0, lng0)
 
     # (ny, nx, n) distances. Grids here are ~44x44x(<=2000) which is small enough to do
-    # densely; a site with 10^5 stored measurements should pre-filter by bbox and time first, which
-    # is what the store's list_measurements(bbox=..., since=...) is for.
+    # densely; a site with 10^5 stored scans should pre-filter by bbox and time first, which
+    # is what the store's list_scans(bbox=..., since=...) is for.
     d = np.sqrt((gx[..., None] - px[None, None, :]) ** 2
                 + (gy[..., None] - py[None, None, :]) ** 2)
     near = d.min(axis=2)
@@ -368,26 +371,25 @@ def idw_grid(measurements, nx: int = 44, ny: int = 44, power: float = 2.0,
     return out
 
 
-def cluster_measurements(measurements, eps_m: float = 120.0, min_twa: float = 0.5,
+def cluster_scans(scans, eps_m: float = 120.0, min_twa: float = 0.5,
                   min_points: int = 2) -> list:
-    """Single-link spatial clusters of concerning measurements, worst first.
+    """Single-link spatial clusters of concerning scans, worst first.
 
-    The point of clustering rather than just listing high measurements is that one high badge is a
+    The point of clustering rather than just listing high scans is that one high badge is a
     *worker* finding - it could be that person's task, their PPE, or a badge fault - whereas
     several high badges in the same place is an *area* finding, and only the second justifies
     sending someone with a portable monitor. So the returned records carry both the count and
-    the number of distinct workers: three high measurements from one worker is still one worker.
+    the number of distinct workers: three high scans from one worker is still one worker.
 
     ``eps_m`` of 120 m is chosen against the plant layout rather than tuned: it is a little
-    over the radius of the process units in :data:`MRPL`, so measurements within the same unit group
-    together while measurements in adjacent units generally do not. Single-link agglomeration is
+    over the radius of the process units in :data:`MRPL`, so scans within the same unit group
+    together while scans in adjacent units generally do not. Single-link agglomeration is
     used because with tens of points per shift it is exact, deterministic and trivially
     explainable in an audit - which matters more here than the asymptotics.
     """
     hot = []
-    for s in measurements:
-        lat, lng = _ensure_coords(s)
-        twa = s.get("twa_ppm")
+    for s in scans:
+        lat, lng, twa = s.get("lat"), s.get("lng"), s.get("twa_ppm")
         if lat is None or lng is None or twa is None:
             continue
         try:
@@ -435,7 +437,7 @@ def cluster_measurements(measurements, eps_m: float = 120.0, min_twa: float = 0.
         peak = max(twas)
         out.append({
             "lat": round(lat, 6), "lng": round(lng, 6),
-            "n_measurements": len(members),
+            "n_scans": len(members),
             "n_workers": len(workers),
             "workers": workers[:12],
             "peak_twa_ppm": round(peak, 3),
@@ -448,7 +450,7 @@ def cluster_measurements(measurements, eps_m: float = 120.0, min_twa: float = 0.
             "sour_service": bool(unit is not None and unit.code in H2S_UNITS),
             "interpretation": _cluster_note(unit, len(workers), peak),
         })
-    out.sort(key=lambda c: (-c["peak_twa_ppm"], -c["n_measurements"]))
+    out.sort(key=lambda c: (-c["peak_twa_ppm"], -c["n_scans"]))
     return out
 
 
@@ -466,21 +468,21 @@ def _cluster_note(unit, n_workers: int, peak_twa: float) -> str:
            if n_workers > 1 else
            "A single worker, so this may be that person's task or PPE rather than the "
            "area - confirm with a second badge before acting on the location.")
-    urgency = ("Peak reading is above the experimental extreme threshold: review. " if peak_twa >= 5.0
+    urgency = ("Peak is above the 5 ppm STEL-equivalent band: act now. " if peak_twa >= 5.0
                else "")
     return f"{urgency}{who} {site}"
 
 
-def unit_rollup(measurements) -> list:
+def unit_rollup(scans) -> list:
     """Per-unit exposure summary, assigning each scan to the nearest unit it falls inside.
 
-    Measurements outside every unit's radius are collected under ``OUTSIDE`` rather than being
+    Scans outside every unit's radius are collected under ``OUTSIDE`` rather than being
     forced into the nearest unit, because silently attributing a roadside scan to a process
     area would put a finding on the wrong unit's record.
     """
     buckets = {}
-    for s in measurements:
-        lat, lng = _ensure_coords(s)
+    for s in scans:
+        lat, lng = s.get("lat"), s.get("lng")
         code, name = "OUTSIDE", "Outside mapped units"
         if lat is not None and lng is not None:
             try:
@@ -489,9 +491,9 @@ def unit_rollup(measurements) -> list:
                 u, d = None, float("inf")
             if u is not None and d <= u.radius_m * 1.5:
                 code, name = u.code, u.name
-        b = buckets.setdefault(code, {"unit": code, "unit_name": name, "n_measurements": 0,
+        b = buckets.setdefault(code, {"unit": code, "unit_name": name, "n_scans": 0,
                                       "n_invalid": 0, "workers": set(), "twas": []})
-        b["n_measurements"] += 1
+        b["n_scans"] += 1
         twa = s.get("twa_ppm")
         okflag = s.get("ok", True)
         if s.get("worker_id"):
@@ -511,30 +513,29 @@ def unit_rollup(measurements) -> list:
         peak = max(twas) if twas else float("nan")
         rec = {
             "unit": b["unit"], "unit_name": b["unit_name"],
-            "n_measurements": b["n_measurements"], "n_invalid": b["n_invalid"],
+            "n_scans": b["n_scans"], "n_invalid": b["n_invalid"],
             "n_workers": len(b["workers"]),
             "peak_twa_ppm": None if not twas else round(peak, 3),
             "mean_twa_ppm": None if not twas else round(sum(twas) / len(twas), 3),
-            "n_elevated": sum(1 for v in twas if v >= 1.0),
+            "n_over_tlv": sum(1 for v in twas if v >= 1.0),
             "band": band_for(peak, ok=bool(twas))["key"],
             "sour_service": b["unit"] in H2S_UNITS,
         }
         out.append(rec)
-    out.sort(key=lambda r: (-(r["peak_twa_ppm"] or -1), -r["n_measurements"]))
+    out.sort(key=lambda r: (-(r["peak_twa_ppm"] or -1), -r["n_scans"]))
     return out
 
 
-def heatmap_payload(measurements, **grid_kw) -> dict:
+def heatmap_payload(scans, **grid_kw) -> dict:
     """Everything the map needs in one response: points, grid, clusters, unit rollup."""
     pts = []
-    for s in measurements:
+    for s in scans:
         band = band_for(s.get("twa_ppm"), ok=bool(s.get("ok", True)))
-        lat, lng = _ensure_coords(s)
         pts.append({
             "id": s.get("id"),
             "worker_id": s.get("worker_id"),
-            "measured_at": s.get("measured_at"),
-            "lat": lat, "lng": lng,
+            "scanned_at": s.get("scanned_at"),
+            "lat": s.get("lat"), "lng": s.get("lng"),
             "accuracy_m": s.get("accuracy_m"),
             # Carried so the map can draw a generated coordinate differently from an observed
             # one. Without it the two are indistinguishable on screen, which is the one thing
@@ -542,24 +543,26 @@ def heatmap_payload(measurements, **grid_kw) -> dict:
             "location_mocked": bool(s.get("location_mocked")),
             "dose_ppm_hr": s.get("dose_ppm_hr"),
             "twa_ppm": s.get("twa_ppm"),
+            "delta_l_star": s.get("delta_l_star"),
+            "delta_e00": s.get("delta_e00"),
             "verdict": s.get("verdict"),
             "ok": bool(s.get("ok", True)),
             "band": band["key"],
             "colour": band["colour"],
             "unit": s.get("unit"),
         })
-    grid = idw_grid(measurements, **grid_kw)
-    clusters = cluster_measurements(measurements)
+    grid = idw_grid(scans, **grid_kw)
+    clusters = cluster_scans(scans)
     
-    sorted_measurements = sorted([s for s in measurements if s.get("ok", True)], key=lambda x: x.get("measured_at") or "", reverse=True)
+    sorted_scans = sorted([s for s in scans if s.get("ok", True)], key=lambda x: x.get("scanned_at") or "", reverse=True)
     history = []
-    for s in sorted_measurements[:50]:
+    for s in sorted_scans[:50]:
         history.append({
             "id": s.get("id"),
             "worker_id": s.get("worker_id"),
             "worker_name": s.get("worker_name") or s.get("worker_id"),
             "zone": s.get("unit"),
-            "timestamp": s.get("measured_at"),
+            "timestamp": s.get("scanned_at"),
             "dose_ppm_hr": s.get("dose_ppm_hr"),
             "twa_ppm": s.get("twa_ppm"),
             "status": s.get("verdict") or "UNKNOWN"
@@ -569,10 +572,10 @@ def heatmap_payload(measurements, **grid_kw) -> dict:
         "points": pts,
         "grid": grid,
         "clusters": clusters,
-        "units": unit_rollup(measurements),
+        "units": unit_rollup(scans),
         "plant": MRPL.as_dict(),
-        "bands": list(VISUALIZATION_BINS),
-        "n_measurements": len(pts),
+        "bands": list(RISK_BANDS),
+        "n_scans": len(pts),
         "n_located": sum(1 for p in pts if p["lat"] is not None and p["lng"] is not None),
         "measurementHistory": history,
         "latestMeasurement": history[0] if history else None,

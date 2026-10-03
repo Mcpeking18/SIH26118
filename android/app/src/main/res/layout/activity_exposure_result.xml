@@ -298,6 +298,27 @@
                     android:textSize="13sp" />
             </LinearLayout>
 
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="8dp">
+                <TextView
+                    android:layout_width="120dp"
+                    android:layout_height="wrap_content"
+                    android:text="Debug Info"
+                    android:textColor="@color/h2s_text_muted"
+                    android:textSize="11sp" />
+                <TextView
+                    android:id="@+id/tvDebugInfo"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=""
+                    android:textColor="@color/h2s_text_secondary"
+                    android:fontFamily="monospace"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
 <!--            <LinearLayout-->
 <!--                android:layout_width="match_parent"-->
 <!--                android:layout_height="wrap_content"-->

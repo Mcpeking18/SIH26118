@@ -42,6 +42,7 @@ class ExposureResultActivity : AppCompatActivity() {
         val tvDeltaE = findViewById<TextView>(R.id.tvDeltaE)
         val tvTimestamp = findViewById<TextView>(R.id.tvTimestamp)
         val tvWristbandId = findViewById<TextView>(R.id.tvWristbandId)
+        val tvDebugInfo = findViewById<TextView>(R.id.tvDebugInfo)
 
         if (scanResult != null) {
             tvDose.text = if (scanResult.dosePpmHr != null) String.format("%.2f", scanResult.dosePpmHr) else "--"
@@ -50,6 +51,8 @@ class ExposureResultActivity : AppCompatActivity() {
             tvDeltaE.text = String.format("%.2f", scanResult.deltaE00 ?: 0.0)
             tvTimestamp.text = scanResult.timestamp ?: "Unknown Time"
             tvWristbandId.text = scanResult.wristbandId ?: "Unknown ID" 
+            tvDebugInfo.text = scanResult.debugInfo ?: "No debug info available."
+
             val tvClassification = findViewById<TextView>(R.id.tvClassification)
             val dose = scanResult.dosePpmHr
             if (dose != null) {
@@ -69,6 +72,7 @@ class ExposureResultActivity : AppCompatActivity() {
             tvDeltaE.text = "--"
             tvTimestamp.text = "--"
             tvWristbandId.text = "--"
+            tvDebugInfo.text = "--"
         }
 
         btnSaveResult.setOnClickListener {
@@ -77,6 +81,36 @@ class ExposureResultActivity : AppCompatActivity() {
                 val finalZone = if (selectedArea == "Unknown Area") null else selectedArea
                 val updatedResult = scanResult.copy(zone = finalZone)
                 com.mrpl.wristband.data.HistoryManager.saveRecord(this, updatedResult)
+                
+                // Sync to dashboard backend
+                Thread {
+                    try {
+                        // Edit this IP if you are testing on a real physical phone instead of emulator!
+                        // For emulator, use 10.0.2.2. For physical phone, find your laptop's IPv4 address (e.g., 192.168.x.x)
+                        val backendIp = "192.168.1.102" 
+                        val url = java.net.URL("http://$backendIp:8000/api/measurements")
+                        val conn = url.openConnection() as java.net.HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
+                        
+                        val dose = updatedResult.dosePpmHr ?: 0.0
+                        val twa = updatedResult.twaPpm ?: 0.0
+                        // Default verdict safely to LOW/SAFE if null
+                        val status = updatedResult.verdict ?: "SAFE"
+                        val zoneStr = updatedResult.zone ?: "Unknown"
+                        val wid = updatedResult.wristbandId
+                        
+                        val json = """{"worker_id": "$wid", "worker_name": "Test Worker", "zone": "$zoneStr", "dose_ppm_hr": $dose, "twa_ppm": $twa, "status": "$status", "temperature_c": null, "humidity_rh": null}"""
+                        
+                        conn.outputStream.use { it.write(json.toByteArray()) }
+                        val code = conn.responseCode
+                        android.util.Log.d("H2S_SYNC", "Synced to backend: $code")
+                    } catch (e: Exception) {
+                        android.util.Log.e("H2S_SYNC", "Failed to sync to dashboard: ${e.message}")
+                    }
+                }.start()
+
             }
             finish()
         }

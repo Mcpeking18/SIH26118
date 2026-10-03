@@ -13,3 +13,4 @@ android/build/
 local.properties
 android/opencv/
 android/.idea/
+/videos

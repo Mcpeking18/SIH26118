@@ -43,6 +43,7 @@ object HistoryManager {
             e.printStackTrace()
         }
         
+        val df = java.text.SimpleDateFormat("dd MMM yyyy - HH:mm:ss", java.util.Locale.US)
         if (list.isEmpty()) {
             val cal = java.util.Calendar.getInstance()
             val doses = listOf(3.5, 12.0, 24.0, 5.0, 42.0, 9.0, 15.0)
@@ -55,7 +56,6 @@ object HistoryManager {
                 cal.add(java.util.Calendar.DAY_OF_YEAR, -daysAgo)
                 val dayOfWeek = cal.get(java.util.Calendar.DAY_OF_WEEK)
                 if (dayOfWeek != java.util.Calendar.SATURDAY && dayOfWeek != java.util.Calendar.SUNDAY) {
-                    val df = java.text.SimpleDateFormat("dd MMM yyyy - 17:00:00", java.util.Locale.US)
                     list.add(ScanUiResult(
                         wristbandId = "WB-DEMO-001",
                         timestamp = df.format(cal.time),
@@ -70,10 +70,12 @@ object HistoryManager {
                 }
                 daysAgo++
             }
-            list.sortByDescending { it.timestamp }
+            list.sortByDescending { try { df.parse(it.timestamp)?.time ?: 0L } catch(e: Exception) { 0L } }
             val jsonArray = org.json.JSONArray()
             list.forEach { jsonArray.put(toJson(it)) }
             prefs.edit().putString(KEY_RECORDS, jsonArray.toString()).apply()
+        } else {
+            list.sortByDescending { try { df.parse(it.timestamp)?.time ?: 0L } catch(e: Exception) { 0L } }
         }
         return list
     }

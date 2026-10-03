@@ -10,21 +10,21 @@ enum class ExposureSeverity {
 }
 
 enum class DemoExposureStatus(val label: String, val colorHex: String) {
-    LOW("LOW", "#10B981"),
-    ELEVATED("ELEVATED", "#F59E0B"),
-    CONCERNING("CONCERNING", "#F97316"),
-    HIGH("HIGH", "#EA580C"),
-    VERY_HIGH("VERY HIGH", "#EF4444");
+    NORMAL("Normal", "#10B981"),
+    ATTENTION("Attention", "#F59E0B"),
+    REVIEW("Review", "#F97316"),
+    EXPERIMENTAL_HIGH("Experimental High", "#EA580C"),
+    EXPERIMENTAL_EXTREME("Experimental Extreme", "#EF4444");
 
     companion object {
         fun fromDose(dose: Double?): DemoExposureStatus {
-            if (dose == null) return LOW
+            if (dose == null) return NORMAL
             return when {
-                dose < 8.0 -> LOW
-                dose < 16.0 -> ELEVATED
-                dose < 32.0 -> CONCERNING
-                dose < 50.0 -> HIGH
-                else -> VERY_HIGH
+                dose < 8.0 -> NORMAL
+                dose < 16.0 -> ATTENTION
+                dose < 32.0 -> REVIEW
+                dose < 50.0 -> EXPERIMENTAL_HIGH
+                else -> EXPERIMENTAL_EXTREME
             }
         }
     }
@@ -60,7 +60,8 @@ data class ScanUiResult(
     val lastCloudSync: String? = null,
     val isMock: Boolean = true,
     val scanState: ScanState = ScanState.SUCCESS,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val debugInfo: String? = null
 ) : Serializable
 
 data class ExposureRecord(

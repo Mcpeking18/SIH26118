@@ -149,12 +149,16 @@ data class BadgeV2Spec(
             doubleArrayOf(31.888747393429796, -6.880566671974009e-06, 2.7522266687896035e-06),
             doubleArrayOf(29.821116176000125, 23.36432759155066, -49.33517713160715)
         )
-        val PAD_STAGE_SRGB = arrayOf(
-            intArrayOf(220, 232, 232),
-            intArrayOf(184, 184, 160),
-            intArrayOf(122, 88, 50),
-            intArrayOf(56, 35, 21),
-            intArrayOf(13, 12, 12)
+        // EXPERIMENTAL: The following H2S color progression (light blue -> olive green -> dark brown)
+        // is an assumption and preliminary gaseous H2S exposure did NOT clearly follow this expected progression.
+        // DO NOT invent new H2S reference colors without experimental evidence.
+        // This ladder must be replaced by experimentally measured H2S calibration points.
+        val EXPERIMENTAL_PAD_STAGE_SRGB = arrayOf(
+            intArrayOf(220, 232, 232), // Light Blue
+            intArrayOf(184, 184, 160), // Olive Green
+            intArrayOf(122, 88, 50),   // Brown
+            intArrayOf(56, 35, 21),    // Dark Brown
+            intArrayOf(13, 12, 12)     // Black
         )
     }
 }

@@ -29,10 +29,8 @@ class ExposureHistoryFragment : Fragment() {
         val layoutEmptyState = view.findViewById<View>(R.id.layoutEmptyState)
         val layoutGraphContainer = view.findViewById<LinearLayout>(R.id.layoutGraphContainer)
 
-        val selectedId = "WB-DEMO-001" // Prototype Dummy ID
-        
         val allRecords = HistoryManager.getRecords(requireContext())
-        val realRecords = allRecords.filter { it.wristbandId == selectedId }
+        val realRecords = allRecords // Show all history instead of filtering by a dummy ID
         
         adapter = ExposureAdapter(realRecords)
         rv.layoutManager = LinearLayoutManager(requireContext())
@@ -104,10 +102,8 @@ class ExposureHistoryFragment : Fragment() {
         val layoutEmptyState = root.findViewById<View>(R.id.layoutEmptyState)
         val layoutGraphContainer = root.findViewById<LinearLayout>(R.id.layoutGraphContainer)
 
-        val selectedId = "WB-DEMO-001" // Prototype Dummy ID
-        
         val allRecords = HistoryManager.getRecords(requireContext())
-        val realRecords = allRecords.filter { it.wristbandId == selectedId }
+        val realRecords = allRecords
         
         adapter = ExposureAdapter(realRecords)
         rv.layoutManager = LinearLayoutManager(requireContext())
